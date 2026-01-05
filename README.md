@@ -1,5 +1,9 @@
 # gwtx (git worktree extra)
 
+[![Crates.io](https://img.shields.io/crates/v/gwtx.svg)](https://crates.io/crates/gwtx)
+[![CI](https://github.com/h-michael/gwtx/actions/workflows/ci.yml/badge.svg)](https://github.com/h-michael/gwtx/actions/workflows/ci.yml)
+[![License](https://img.shields.io/crates/l/gwtx.svg)](LICENSE-MIT)
+
 CLI tool that enhances git worktree with automated setup and utilities.
 
 > **Note:** This tool is under active development. Commands and configuration format may change in future versions.
