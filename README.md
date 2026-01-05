@@ -178,6 +178,14 @@ For more information, see:
 - [Symbolic Links - Win32 apps](https://learn.microsoft.com/en-us/windows/win32/fileio/symbolic-links)
 - [CreateSymbolicLink API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinka)
 
+## Roadmap
+
+Planned features for future releases:
+
+- `gwtx config init` - Generate `.gwtx.toml` template
+- `gwtx remove` - Remove worktree with fuzzy search selection
+- Hooks - Run custom scripts (pre-add, post-add)
+
 ## License
 
 MIT OR Apache-2.0
