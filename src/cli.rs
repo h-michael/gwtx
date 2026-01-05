@@ -37,6 +37,9 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Add a new worktree with setup
     Add(AddArgs),
+
+    /// Validate .gwtx.toml configuration
+    Validate,
 }
 
 /// Arguments for the `add` subcommand.

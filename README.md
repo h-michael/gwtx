@@ -32,6 +32,9 @@ gwtx add --interactive
 
 # Preview without executing
 gwtx add --dry-run ../test
+
+# Validate configuration
+gwtx validate
 ```
 
 ### Configuration

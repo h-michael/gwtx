@@ -20,6 +20,13 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
     // Get repository root
     let repo_root = git::repo_root()?;
 
+    // Load and validate config first (before interactive mode)
+    let config = match config::load(&repo_root) {
+        Ok(cfg) => cfg,
+        Err(Error::ConfigNotFound { .. }) if args.no_setup => Config::default(),
+        Err(e) => return Err(e),
+    };
+
     // Handle interactive mode
     let worktree_path = if args.interactive {
         run_interactive(&mut args)?
@@ -31,13 +38,6 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
         } else {
             std::env::current_dir()?.join(&path)
         }
-    };
-
-    // Load config (if exists)
-    let config = match config::load(&repo_root) {
-        Ok(cfg) => cfg,
-        Err(Error::ConfigNotFound { .. }) if args.no_setup => Config::default(),
-        Err(e) => return Err(e),
     };
 
     // Skip setup if requested - just run git worktree add
@@ -172,7 +172,7 @@ fn run_setup(
     // Process symlinks
     for link in &config.link {
         let source = repo_root.join(&link.source);
-        let target = worktree_path.join(link.target());
+        let target = worktree_path.join(&link.target);
 
         process_operation(
             &source,
@@ -190,7 +190,7 @@ fn run_setup(
     // Process copies
     for copy in &config.copy {
         let source = repo_root.join(&copy.source);
-        let target = worktree_path.join(copy.target());
+        let target = worktree_path.join(&copy.target);
 
         process_operation(
             &source,

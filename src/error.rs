@@ -11,6 +11,9 @@ pub(crate) enum Error {
     #[error("Failed to parse config: {message}")]
     ConfigParse { message: String },
 
+    #[error("Invalid config:\n{message}")]
+    ConfigValidation { message: String },
+
     #[error("Not inside a git repository")]
     NotInGitRepo,
 
