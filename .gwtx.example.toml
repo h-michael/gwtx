@@ -1,0 +1,29 @@
+# gwtx configuration file
+# Copy this file to .gwtx.toml and customize for your project.
+
+# Global options
+# [options]
+# on_conflict = "backup"  # abort, skip, overwrite, backup
+
+# Create directories in the new worktree
+# [[mkdir]]
+# path = "tmp/cache"
+# description = "Cache directory"
+
+# [[mkdir]]
+# path = "build"
+# description = "Build directory"
+
+# Create symbolic links from repository root to worktree
+# [[link]]
+# source = ".env.local"
+# target = ".env.local"  # optional, defaults to source
+# on_conflict = "skip"   # optional
+# description = "Local environment"
+
+# Copy files from repository root to worktree
+# [[copy]]
+# source = ".env.example"
+# target = ".env"
+# on_conflict = "backup"
+# description = "Environment file"

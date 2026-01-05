@@ -39,7 +39,7 @@ gwtx validate
 
 ### Configuration
 
-Create `.gwtx.toml` in your repository root:
+Create `.gwtx.toml` in your repository root (see [`.gwtx.example.toml`](.gwtx.example.toml)):
 
 ```toml
 [options]
