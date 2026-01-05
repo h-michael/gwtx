@@ -160,65 +160,66 @@ fn run_setup(
 
     // Process symlinks
     for link in &config.link {
-        let source = repo_root.join(&link.source);
-        let target = worktree_path.join(&link.target);
-
-        process_operation(
-            &source,
-            &target,
-            link.on_conflict.or(config.options.on_conflict),
-            &mut conflict_mode_override,
-            args.dry_run,
-            operation::create_symlink,
-            link.description.as_deref(),
-            output,
-            true, // is_link
-        )?;
+        let params = OperationParams {
+            source: &repo_root.join(&link.source),
+            target: &worktree_path.join(&link.target),
+            op_type: FileOp::Link,
+            config_mode: link.on_conflict.or(config.options.on_conflict),
+            description: link.description.as_deref(),
+        };
+        process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
     }
 
     // Process copies
     for copy in &config.copy {
-        let source = repo_root.join(&copy.source);
-        let target = worktree_path.join(&copy.target);
-
-        process_operation(
-            &source,
-            &target,
-            copy.on_conflict.or(config.options.on_conflict),
-            &mut conflict_mode_override,
-            args.dry_run,
-            operation::copy_file,
-            copy.description.as_deref(),
-            output,
-            false, // is_link
-        )?;
+        let params = OperationParams {
+            source: &repo_root.join(&copy.source),
+            target: &worktree_path.join(&copy.target),
+            op_type: FileOp::Copy,
+            config_mode: copy.on_conflict.or(config.options.on_conflict),
+            description: copy.description.as_deref(),
+        };
+        process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
     }
 
     Ok(())
 }
 
-/// Process a single operation (symlink or copy) with conflict handling
-#[allow(clippy::too_many_arguments)]
-fn process_operation<F>(
-    source: &Path,
-    target: &Path,
+/// File operation type.
+enum FileOp {
+    Link,
+    Copy,
+}
+
+/// Parameters for a file operation.
+struct OperationParams<'a> {
+    source: &'a Path,
+    target: &'a Path,
+    op_type: FileOp,
     config_mode: Option<OnConflict>,
+    description: Option<&'a str>,
+}
+
+/// Process a single operation (symlink or copy) with conflict handling.
+fn process_operation(
+    params: &OperationParams,
     override_mode: &mut Option<OnConflict>,
     dry_run: bool,
-    operation: F,
-    description: Option<&str>,
     output: &Output,
-    is_link: bool,
-) -> Result<()>
-where
-    F: FnOnce(&Path, &Path) -> Result<()>,
-{
+) -> Result<()> {
+    let OperationParams {
+        source,
+        target,
+        op_type,
+        config_mode,
+        description,
+    } = params;
     // Check for conflict
     if check_conflict(target) {
         // Determine conflict mode
         let mode = if let Some(mode) = *override_mode {
             mode
-        } else if let Some(mode) = config_mode {
+        } else if let Some(mode) = *config_mode {
             mode
         } else {
             // Prompt user
@@ -245,7 +246,10 @@ where
 
     // Perform operation
     if dry_run {
-        let op_name = if is_link { "link" } else { "copy" };
+        let op_name = match op_type {
+            FileOp::Link => "link",
+            FileOp::Copy => "copy",
+        };
         output.dry_run(&format!(
             "Would {}: {} -> {}",
             op_name,
@@ -253,11 +257,15 @@ where
             target.display()
         ));
     } else {
-        operation(source, target)?;
-        if is_link {
-            output.link(source, target, description);
-        } else {
-            output.copy(source, target, description);
+        match op_type {
+            FileOp::Link => {
+                operation::create_symlink(source, target)?;
+                output.link(source, target, *description);
+            }
+            FileOp::Copy => {
+                operation::copy_file(source, target)?;
+                output.copy(source, target, *description);
+            }
         }
     }
 

@@ -10,25 +10,11 @@ impl Output {
         Self { quiet }
     }
 
-    /// Print an info message (suppressed in quiet mode).
-    #[allow(dead_code)]
-    pub fn info(&self, message: &str) {
-        if !self.quiet {
-            println!("{message}");
-        }
-    }
-
     /// Print a success message (suppressed in quiet mode).
     pub fn success(&self, message: &str) {
         if !self.quiet {
             println!("{message}");
         }
-    }
-
-    /// Print a warning message (always shown).
-    #[allow(dead_code)]
-    pub fn warn(&self, message: &str) {
-        eprintln!("[warn] {message}");
     }
 
     /// Print mkdir operation.
@@ -42,9 +28,10 @@ impl Output {
         }
     }
 
-    /// Print symlink operation.
-    pub fn link(
+    /// Print file operation (link or copy).
+    fn print_file_op(
         &self,
+        op: &str,
         source: &std::path::Path,
         target: &std::path::Path,
         description: Option<&str>,
@@ -55,17 +42,26 @@ impl Output {
         let source_str = source.file_name().unwrap_or_default().to_string_lossy();
         let target_str = target.file_name().unwrap_or_default().to_string_lossy();
 
-        if source_str == target_str {
-            match description {
-                Some(desc) => println!("Linking: {source_str} ({desc})"),
-                None => println!("Linking: {source_str}"),
-            }
+        let base = if source_str == target_str {
+            format!("{op}: {source_str}")
         } else {
-            match description {
-                Some(desc) => println!("Linking: {source_str} → {target_str} ({desc})"),
-                None => println!("Linking: {source_str} → {target_str}"),
-            }
+            format!("{op}: {source_str} → {target_str}")
+        };
+
+        match description {
+            Some(desc) => println!("{base} ({desc})"),
+            None => println!("{base}"),
         }
+    }
+
+    /// Print symlink operation.
+    pub fn link(
+        &self,
+        source: &std::path::Path,
+        target: &std::path::Path,
+        description: Option<&str>,
+    ) {
+        self.print_file_op("Linking", source, target, description);
     }
 
     /// Print copy operation.
@@ -75,23 +71,7 @@ impl Output {
         target: &std::path::Path,
         description: Option<&str>,
     ) {
-        if self.quiet {
-            return;
-        }
-        let source_str = source.file_name().unwrap_or_default().to_string_lossy();
-        let target_str = target.file_name().unwrap_or_default().to_string_lossy();
-
-        if source_str == target_str {
-            match description {
-                Some(desc) => println!("Copying: {source_str} ({desc})"),
-                None => println!("Copying: {source_str}"),
-            }
-        } else {
-            match description {
-                Some(desc) => println!("Copying: {source_str} → {target_str} ({desc})"),
-                None => println!("Copying: {source_str} → {target_str}"),
-            }
-        }
+        self.print_file_op("Copying", source, target, description);
     }
 
     /// Print skip message.

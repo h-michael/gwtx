@@ -31,20 +31,11 @@ pub(crate) fn resolve_conflict(target: &Path, mode: OnConflict) -> Result<Confli
             Ok(ConflictAction::Proceed)
         }
         OnConflict::Backup => {
-            // Create backup with .bak extension
-            let backup_path = target.with_extension(format!(
-                "{}.bak",
-                target.extension().unwrap_or_default().to_string_lossy()
-            ));
-
-            // Handle case where extension is empty
-            let backup_path = if backup_path == target.with_extension("bak") {
-                target.with_extension("bak")
-            } else {
-                backup_path
+            // Create backup: file.txt -> file.txt.bak, file -> file.bak
+            let backup_path = match target.extension() {
+                Some(ext) => target.with_extension(format!("{}.bak", ext.to_string_lossy())),
+                None => target.with_extension("bak"),
             };
-
-            // Rename works for files, symlinks, and directories
             std::fs::rename(target, &backup_path)?;
             Ok(ConflictAction::Proceed)
         }
@@ -117,5 +108,17 @@ mod tests {
         assert_eq!(action, ConflictAction::Proceed);
         assert!(!file.exists()); // Original should be moved
         assert!(temp.path().join("file.txt.bak").exists()); // Backup should exist
+    }
+
+    #[test]
+    fn test_resolve_conflict_backup_no_extension() {
+        let temp = TempDir::new().unwrap();
+        let file = temp.path().join("Makefile");
+        std::fs::write(&file, "content").unwrap();
+
+        let action = resolve_conflict(&file, OnConflict::Backup).unwrap();
+        assert_eq!(action, ConflictAction::Proceed);
+        assert!(!file.exists());
+        assert!(temp.path().join("Makefile.bak").exists());
     }
 }

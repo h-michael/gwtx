@@ -98,6 +98,14 @@ pub(crate) fn worktree_remove(path: &std::path::Path, force: bool) -> Result<()>
     Ok(())
 }
 
+/// Parse git command output into lines.
+fn parse_output_lines(bytes: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
 /// List local branch names.
 pub(crate) fn list_branches() -> Result<Vec<String>> {
     let output = Command::new("git")
@@ -108,12 +116,7 @@ pub(crate) fn list_branches() -> Result<Vec<String>> {
         return Err(Error::NotInGitRepo);
     }
 
-    let branches = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(|s| s.to_string())
-        .collect();
-
-    Ok(branches)
+    Ok(parse_output_lines(&output.stdout))
 }
 
 /// List remote branch names (e.g., "origin/main").
@@ -126,13 +129,10 @@ pub(crate) fn list_remote_branches() -> Result<Vec<String>> {
         return Err(Error::NotInGitRepo);
     }
 
-    let branches = String::from_utf8_lossy(&output.stdout)
-        .lines()
+    Ok(parse_output_lines(&output.stdout)
+        .into_iter()
         .filter(|s| !s.contains("HEAD"))
-        .map(|s| s.to_string())
-        .collect();
-
-    Ok(branches)
+        .collect())
 }
 
 /// Check if current directory is inside a git repository.
