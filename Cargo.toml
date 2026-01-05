@@ -2,9 +2,19 @@
 name = "gwtx"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "git worktree extra - CLI tool to enhance git worktree with automated setup tasks"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/h-michael/gwtx"
+homepage = "https://github.com/h-michael/gwtx"
+readme = "README.md"
+keywords = ["git", "worktree", "cli", "automation"]
+categories = ["command-line-utilities", "development-tools"]
+
+exclude = [
+    ".github/",
+    ".gwtx.example.toml",
+]
 
 [[bin]]
 name = "gwtx"
