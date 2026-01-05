@@ -4,7 +4,7 @@ use crate::error::{Error, Result};
 use crate::git;
 use crate::operation::{self, ConflictAction, check_conflict, create_directory, resolve_conflict};
 use crate::output::Output;
-use crate::prompt::{self, ConflictChoice, InteractiveScreen};
+use crate::prompt::{self, ConflictChoice};
 
 use std::path::{Path, PathBuf};
 
@@ -96,18 +96,14 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
     Ok(())
 }
 
-/// Run interactive mode to select branch and path
+/// Run interactive mode to select branch and path.
 fn run_interactive(args: &mut AddArgs) -> Result<PathBuf> {
-    // Create interactive screen session (alternate screen)
-    let mut screen = InteractiveScreen::new()?;
-
     // Get list of local and remote branches
     let local_branches = git::list_branches()?;
     let remote_branches = git::list_remote_branches()?;
 
     // Prompt for branch selection
-    let branch_choice =
-        prompt::prompt_branch_selection(&mut screen, &local_branches, &remote_branches)?;
+    let branch_choice = prompt::prompt_branch_selection(&local_branches, &remote_branches)?;
 
     // Set branch in args
     if branch_choice.create_new {
@@ -124,7 +120,7 @@ fn run_interactive(args: &mut AddArgs) -> Result<PathBuf> {
     let suggested_path = format!("../{}", branch_choice.branch.replace('/', "-"));
 
     // Prompt for worktree path
-    let path = prompt::prompt_worktree_path(&mut screen, &suggested_path)?;
+    let path = prompt::prompt_worktree_path(&suggested_path)?;
 
     // Update args.path for display purposes
     args.path = Some(path.clone());
@@ -135,9 +131,6 @@ fn run_interactive(args: &mut AddArgs) -> Result<PathBuf> {
     } else {
         std::env::current_dir()?.join(&path)
     };
-
-    // InteractiveScreen will switch back to main screen when dropped
-    drop(screen);
 
     Ok(worktree_path)
 }

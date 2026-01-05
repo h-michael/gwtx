@@ -97,6 +97,11 @@ pub(crate) enum ConfigCommand {
 /// Arguments for the `add` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
+INTERACTIVE MODE KEYBINDINGS:
+    Navigation    ↑/↓, Ctrl+n/p
+    Select        Enter, Ctrl+j
+    Cancel        Esc, Ctrl+c
+
 CONFLICT MODES:
     abort      Stop immediately when a conflict is found (default in non-interactive)
     skip       Skip the conflicting file and continue

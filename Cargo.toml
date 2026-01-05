@@ -25,8 +25,7 @@ clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 thiserror = "2"
-skim = "0.20"
-termion = "4"
+inquire = "0.9"
 ctrlc = { version = "3", features = ["termination"] }
 clap_complete = "4"
 clap_mangen = "0.2"
