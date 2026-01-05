@@ -16,9 +16,11 @@ gwtx reads `.gwtx.toml` from your repository and runs these tasks automatically 
 
 ## Installation
 
+```bash
+cargo install gwtx
 ```
-cargo install --path .
-```
+
+See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub Releases).
 
 ## Usage
 
