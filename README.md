@@ -2,6 +2,8 @@
 
 CLI tool that enhances git worktree with automated setup and utilities.
 
+> **Note:** This tool is under active development. Commands and configuration format may change in future versions.
+
 ## Problem
 
 Every time you create a git worktree, you end up doing the same manual setup:
