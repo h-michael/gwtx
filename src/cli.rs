@@ -39,8 +39,8 @@ pub(crate) enum Command {
     /// Add a new worktree with setup
     Add(AddArgs),
 
-    /// Validate .gwtx.toml configuration
-    Validate,
+    /// Manage .gwtx.toml configuration
+    Config(ConfigArgs),
 
     /// Generate shell completion script
     Completions {
@@ -50,6 +50,48 @@ pub(crate) enum Command {
 
     /// Generate man page
     Man,
+}
+
+/// Arguments for the `config` subcommand.
+#[derive(Parser, Debug)]
+#[command(after_help = "\
+CONFIG FORMAT:
+    [options]
+    on_conflict = \"backup\"    # Optional, see CONFLICT MODES below
+
+    [[mkdir]]
+    path = \"tmp/cache\"        # Required, relative to worktree
+    description = \"...\"       # Optional
+
+    [[link]]
+    source = \".env.local\"     # Required, relative to repo root
+    target = \".env.local\"     # Optional, defaults to source
+    on_conflict = \"skip\"      # Optional, overrides global
+    description = \"...\"       # Optional
+
+    [[copy]]
+    source = \".env.example\"   # Required, relative to repo root
+    target = \".env\"           # Optional, defaults to source
+    on_conflict = \"backup\"    # Optional, overrides global
+    description = \"...\"       # Optional
+
+CONFLICT MODES:
+    abort      Stop immediately when a conflict is found
+    skip       Skip the conflicting file and continue
+    overwrite  Replace the existing file
+    backup     Rename existing file with .bak suffix before creating new one
+
+    Default: prompt interactively (error if non-interactive, use --on-conflict)")]
+pub(crate) struct ConfigArgs {
+    #[command(subcommand)]
+    pub command: Option<ConfigCommand>,
+}
+
+/// Config subcommands.
+#[derive(Subcommand, Debug)]
+pub(crate) enum ConfigCommand {
+    /// Validate .gwtx.toml configuration
+    Validate,
 }
 
 /// Arguments for the `add` subcommand.

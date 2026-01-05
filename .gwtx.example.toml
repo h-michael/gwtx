@@ -4,6 +4,7 @@
 # Global options
 # [options]
 # on_conflict = "backup"  # abort, skip, overwrite, backup
+                          # default: prompt interactively (error if non-interactive)
 
 # Create directories in the new worktree
 # [[mkdir]]
