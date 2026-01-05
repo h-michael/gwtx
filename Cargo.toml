@@ -1,0 +1,23 @@
+[package]
+name = "gwtx"
+version = "0.1.0"
+edition = "2024"
+description = "git worktree extra - CLI tool to enhance git worktree with automated setup tasks"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/h-michael/gwtx"
+
+[[bin]]
+name = "gwtx"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+thiserror = "2"
+skim = "0.20"
+termion = "4"
+ctrlc = { version = "3", features = ["termination"] }
+
+[dev-dependencies]
+tempfile = "3"
