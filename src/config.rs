@@ -213,7 +213,13 @@ impl TryFrom<RawConfig> for Config {
 
 /// Validate a path and return an error message if invalid.
 fn validate_path(path: &Path) -> Option<String> {
-    if path.is_absolute() {
+    // Check for absolute paths (including Unix-style on Windows for consistent validation)
+    let is_absolute = path.is_absolute()
+        || path
+            .to_str()
+            .is_some_and(|s| s.starts_with('/') || s.starts_with('\\'));
+
+    if is_absolute {
         return Some(format!(
             "absolute paths are not allowed: {}",
             path.display()
