@@ -20,12 +20,8 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
     // Get repository root
     let repo_root = git::repo_root()?;
 
-    // Load and validate config first (before interactive mode)
-    let config = match config::load(&repo_root) {
-        Ok(cfg) => cfg,
-        Err(Error::ConfigNotFound { .. }) if args.no_setup => Config::default(),
-        Err(e) => return Err(e),
-    };
+    // Load config (optional - if not found, just run git worktree add)
+    let config = config::load(&repo_root)?.unwrap_or_default();
 
     // Handle interactive mode
     let worktree_path = if args.interactive {

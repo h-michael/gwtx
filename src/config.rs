@@ -9,12 +9,12 @@ use serde::Deserialize;
 /// Config file name
 pub const CONFIG_FILE_NAME: &str = ".gwtx.toml";
 
-/// Load config from the repository root
-pub(crate) fn load(repo_root: &Path) -> Result<Config> {
+/// Load config from the repository root. Returns None if config file doesn't exist.
+pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
     let config_path = repo_root.join(CONFIG_FILE_NAME);
 
     if !config_path.exists() {
-        return Err(Error::ConfigNotFound { path: config_path });
+        return Ok(None);
     }
 
     let content = fs::read_to_string(&config_path)?;
@@ -25,7 +25,7 @@ pub(crate) fn load(repo_root: &Path) -> Result<Config> {
     })?;
 
     // Convert to Config (validates and transforms)
-    Config::try_from(raw)
+    Config::try_from(raw).map(Some)
 }
 
 // Raw types for permissive TOML parsing. Missing fields get default values

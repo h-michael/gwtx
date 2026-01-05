@@ -5,9 +5,6 @@ use thiserror::Error;
 /// Application errors.
 #[derive(Debug, Error)]
 pub(crate) enum Error {
-    #[error("Config file not found: {path}\n  Run `gwtx init` to create one.")]
-    ConfigNotFound { path: PathBuf },
-
     #[error("Failed to parse config: {message}")]
     ConfigParse { message: String },
 
