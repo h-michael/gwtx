@@ -1,6 +1,6 @@
-# gwtx
+# gwtx (git worktree extra)
 
-CLI tool that adds setup tasks to git worktree add.
+CLI tool that enhances git worktree with automated setup and utilities.
 
 ## Problem
 
@@ -117,6 +117,46 @@ git worktree Options:
 
 Shared:
   -q, --quiet               Suppress output
+```
+
+## Shell Completion
+
+Generate completion scripts for your shell:
+
+```bash
+# Fish
+gwtx completions fish > ~/.config/fish/completions/gwtx.fish
+
+# Bash
+gwtx completions bash > ~/.local/share/bash-completion/completions/gwtx
+
+# Zsh (add ~/.zfunc to your fpath)
+gwtx completions zsh > ~/.zfunc/_gwtx
+
+# PowerShell (add to your profile)
+gwtx completions powershell >> $PROFILE
+
+# PowerShell (or save to a file and dot-source it)
+gwtx completions powershell > _gwtx.ps1
+# Then add to $PROFILE: . /path/to/_gwtx.ps1
+```
+
+Supported shells: bash, elvish, fish, powershell, zsh
+
+### PowerShell Note
+
+To find your PowerShell profile path, run `echo $PROFILE`. If the profile file doesn't exist, create it with `New-Item -Path $PROFILE -ItemType File -Force`.
+
+## Man Page
+
+Generate and install the man page:
+
+```bash
+# Install to system
+sudo gwtx man > /usr/local/share/man/man1/gwtx.1
+
+# View without installing
+gwtx man | man -l -
 ```
 
 ## Platform Support

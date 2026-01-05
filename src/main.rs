@@ -29,6 +29,8 @@ fn main() -> ExitCode {
     let result = match args.command {
         cli::Command::Add(add_args) => command::add(add_args),
         cli::Command::Validate => command::validate(),
+        cli::Command::Completions { shell } => command::completions(shell),
+        cli::Command::Man => command::man(),
     };
 
     // Check if a signal was received

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 /// CLI arguments.
 #[derive(Parser, Debug)]
@@ -40,6 +41,15 @@ pub(crate) enum Command {
 
     /// Validate .gwtx.toml configuration
     Validate,
+
+    /// Generate shell completion script
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
+    },
+
+    /// Generate man page
+    Man,
 }
 
 /// Arguments for the `add` subcommand.
@@ -157,4 +167,9 @@ impl std::str::FromStr for OnConflictArg {
 /// Parse CLI arguments.
 pub(crate) fn parse() -> Cli {
     Cli::parse()
+}
+
+/// Build CLI for completion/man generation.
+pub(crate) fn build() -> clap::Command {
+    Cli::command()
 }

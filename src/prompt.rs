@@ -49,7 +49,7 @@ struct SimpleItem {
 }
 
 impl SkimItem for SimpleItem {
-    fn text(&self) -> Cow<str> {
+    fn text(&self) -> Cow<'_, str> {
         Cow::Borrowed(&self.text)
     }
 }
