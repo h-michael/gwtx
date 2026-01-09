@@ -1,11 +1,12 @@
 use crate::cli::AddArgs;
-use crate::config::{self, Config, OnConflict};
+use crate::config::{self, Config, Link, OnConflict};
 use crate::error::{Error, Result};
 use crate::git;
 use crate::operation::{self, ConflictAction, check_conflict, create_directory, resolve_conflict};
 use crate::output::Output;
 use crate::prompt::{self, ConflictChoice};
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Execute the `add` subcommand.
@@ -51,6 +52,10 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
 
     // Pre-validate: Check all source files exist BEFORE creating worktree
     for link in &config.link {
+        // Skip validation for glob patterns - they will be expanded later
+        if contains_glob_pattern(&link.source) {
+            continue;
+        }
         let source = repo_root.join(&link.source);
         if !source.exists() {
             return Err(Error::SourceNotFound {
@@ -158,16 +163,19 @@ fn run_setup(
         }
     }
 
-    // Process symlinks
+    // Process symlinks (expand glob patterns first)
     for link in &config.link {
-        let params = OperationParams {
-            source: &repo_root.join(&link.source),
-            target: &worktree_path.join(&link.target),
-            op_type: FileOp::Link,
-            config_mode: link.on_conflict.or(config.options.on_conflict),
-            description: link.description.as_deref(),
-        };
-        process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
+        let expanded_links = expand_link(link, repo_root)?;
+        for expanded_link in expanded_links {
+            let params = OperationParams {
+                source: &repo_root.join(&expanded_link.source),
+                target: &worktree_path.join(&expanded_link.target),
+                op_type: FileOp::Link,
+                config_mode: expanded_link.on_conflict.or(config.options.on_conflict),
+                description: expanded_link.description.as_deref(),
+            };
+            process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
+        }
     }
 
     // Process copies
@@ -270,4 +278,104 @@ fn process_operation(
     }
 
     Ok(())
+}
+
+/// Check if a path contains glob patterns.
+fn contains_glob_pattern(path: &Path) -> bool {
+    path.to_str()
+        .map(|s| s.contains('*') || s.contains('?') || s.contains('['))
+        .unwrap_or(false)
+}
+
+/// Expand a link entry with glob patterns into multiple concrete link entries.
+/// If skip_tracked is true, filter out git-tracked files.
+fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
+    let source_str = link.source.to_string_lossy();
+
+    if !contains_glob_pattern(&link.source) {
+        // No glob pattern, return as-is
+        return Ok(vec![link.clone()]);
+    }
+
+    // Build glob matcher
+    let glob = globset::GlobBuilder::new(&source_str)
+        .literal_separator(true)
+        .build()
+        .map_err(|e| Error::ConfigValidation {
+            message: format!("Invalid glob pattern '{}': {}", source_str, e),
+        })?;
+    let matcher = glob.compile_matcher();
+
+    // Get git-tracked files if needed
+    let tracked_files: HashSet<PathBuf> = if link.skip_tracked {
+        git::list_tracked_files()?.into_iter().collect()
+    } else {
+        HashSet::new()
+    };
+
+    // Walk the repository and find matching files
+    let mut results = Vec::new();
+    for entry in walkdir::WalkDir::new(repo_root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| e.file_name() != ".git")
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        // Skip if it's a directory
+        if path.is_dir() {
+            continue;
+        }
+
+        // Get relative path from repo root
+        let rel_path = match path.strip_prefix(repo_root) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        // Check if it matches the glob pattern
+        if !matcher.is_match(rel_path) {
+            continue;
+        }
+
+        // Skip if it's tracked and skip_tracked is true
+        if link.skip_tracked && tracked_files.contains(rel_path) {
+            continue;
+        }
+
+        // Create a link entry for this file
+        let mut file_link = link.clone();
+        file_link.source = rel_path.to_path_buf();
+        file_link.target = rel_path.to_path_buf();
+        file_link.skip_tracked = false; // Already filtered, no need to check again
+        results.push(file_link);
+    }
+
+    Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_contains_glob_pattern_with_asterisk() {
+        assert!(contains_glob_pattern(Path::new("secrets/*")));
+    }
+
+    #[test]
+    fn test_contains_glob_pattern_with_question() {
+        assert!(contains_glob_pattern(Path::new("file?.txt")));
+    }
+
+    #[test]
+    fn test_contains_glob_pattern_with_bracket() {
+        assert!(contains_glob_pattern(Path::new("file[0-9].txt")));
+    }
+
+    #[test]
+    fn test_contains_glob_pattern_none() {
+        assert!(!contains_glob_pattern(Path::new("secrets/config.json")));
+    }
 }

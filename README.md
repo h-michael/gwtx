@@ -75,6 +75,44 @@ target = ".env"
 description = "Environment file"
 ```
 
+#### Glob Patterns
+
+You can use glob patterns in `[[link]]` source to match multiple files:
+
+```toml
+[[link]]
+source = "secrets/*"
+skip_tracked = true
+description = "Link untracked secret files"
+```
+
+This is particularly useful when you want to:
+- Link only git-ignored files (e.g., local configs, credentials)
+- Skip git-tracked files (e.g., `.gitkeep`) that would conflict with directory symlinks
+
+**Supported patterns:**
+- `*` - matches any characters (e.g., `secrets/*` matches all files in `secrets/`)
+- `?` - matches a single character (e.g., `file?.txt`)
+- `[...]` - matches character ranges (e.g., `file[0-9].txt`)
+
+**Options:**
+- `skip_tracked = true` - Skip git-tracked files when creating symlinks (useful for linking only untracked files)
+
+**Example use case:**
+
+When you have a directory like:
+```
+secrets/
+├── .gitkeep        (tracked by git)
+├── local.json      (ignored by git)
+└── credentials.env (ignored by git)
+```
+
+Using `source = "secrets/*"` with `skip_tracked = true` will:
+- Create symlinks for `local.json` and `credentials.env`
+- Skip `.gitkeep` (leaving the git-tracked file intact)
+- Keep `git status` clean in the worktree
+
 ## Features
 
 ### Operations

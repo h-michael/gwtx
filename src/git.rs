@@ -144,6 +144,21 @@ pub(crate) fn is_inside_repo() -> bool {
         .unwrap_or(false)
 }
 
+/// List all files tracked by git in the repository root.
+/// Returns paths relative to the repository root.
+pub(crate) fn list_tracked_files() -> Result<Vec<PathBuf>> {
+    let output = Command::new("git").args(["ls-files"]).output()?;
+
+    if !output.status.success() {
+        return Err(Error::NotInGitRepo);
+    }
+
+    Ok(parse_output_lines(&output.stdout)
+        .into_iter()
+        .map(PathBuf::from)
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

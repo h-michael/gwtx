@@ -62,6 +62,8 @@ struct RawLink {
     target: Option<PathBuf>,
     on_conflict: Option<OnConflict>,
     description: Option<String>,
+    #[serde(default)]
+    skip_tracked: bool,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -153,6 +155,7 @@ impl TryFrom<RawConfig> for Config {
                 target,
                 on_conflict: raw_link.on_conflict,
                 description: raw_link.description,
+                skip_tracked: raw_link.skip_tracked,
             });
         }
 
@@ -252,12 +255,13 @@ pub(crate) struct Mkdir {
 }
 
 /// Symlink configuration entry.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Link {
     pub source: PathBuf,
     pub target: PathBuf, // Always resolved (no Option)
     pub on_conflict: Option<OnConflict>,
     pub description: Option<String>,
+    pub skip_tracked: bool,
 }
 
 /// File copy configuration entry.
