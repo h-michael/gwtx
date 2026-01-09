@@ -17,6 +17,11 @@ pub(crate) enum Error {
     #[error("Path is required. Use -i for interactive mode or provide a path.")]
     PathRequired,
 
+    #[cfg(feature = "libgit2")]
+    #[error("git operation failed: {0}")]
+    Git(#[from] git2::Error),
+
+    #[cfg(not(feature = "libgit2"))]
     #[error("git worktree add failed:\n{stderr}")]
     GitWorktreeAddFailed { stderr: String },
 

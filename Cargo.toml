@@ -20,6 +20,10 @@ exclude = [
 name = "gwtx"
 path = "src/main.rs"
 
+[features]
+default = []
+libgit2 = ["dep:git2"]
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
@@ -29,6 +33,7 @@ inquire = "0.9"
 ctrlc = { version = "3", features = ["termination"] }
 clap_complete = "4"
 clap_mangen = "0.2"
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
