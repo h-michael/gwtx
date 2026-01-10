@@ -22,6 +22,12 @@
 # on_conflict = "skip"   # optional
 # description = "Local environment"
 
+# Glob pattern support: link multiple files at once
+# [[link]]
+# source = "secrets/*"       # matches all files in secrets/
+# skip_tracked = true        # skip git-tracked files (e.g., .gitkeep)
+# description = "Link untracked secret files"
+
 # Copy files from repository root to worktree
 # [[copy]]
 # source = ".env.example"

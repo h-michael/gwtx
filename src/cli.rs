@@ -64,10 +64,11 @@ CONFIG FORMAT:
     description = \"...\"       # Optional
 
     [[link]]
-    source = \".env.local\"     # Required, relative to repo root
+    source = \".env.local\"     # Required, relative to repo root (supports glob patterns)
     target = \".env.local\"     # Optional, defaults to source
     on_conflict = \"skip\"      # Optional, overrides global
     description = \"...\"       # Optional
+    skip_tracked = true       # Optional, skip git-tracked files (for glob patterns)
 
     [[copy]]
     source = \".env.example\"   # Required, relative to repo root
@@ -81,7 +82,16 @@ CONFLICT MODES:
     overwrite  Replace the existing file
     backup     Rename existing file with .bak suffix before creating new one
 
-    Default: prompt interactively (error if non-interactive, use --on-conflict)")]
+    Default: prompt interactively (error if non-interactive, use --on-conflict)
+
+GLOB PATTERNS:
+    [[link]] supports glob patterns in the source field:
+        source = \"secrets/*\"        Match all files in secrets/
+        source = \"file?.txt\"        Match single character
+        source = \"file[0-9].txt\"    Match character ranges
+
+    With skip_tracked = true, only git-ignored files are linked, while
+    git-tracked files (like .gitkeep) are skipped. This keeps git status clean.")]
 pub(crate) struct ConfigArgs {
     #[command(subcommand)]
     pub command: Option<ConfigCommand>,

@@ -29,6 +29,8 @@ inquire = "0.9"
 ctrlc = { version = "3", features = ["termination"] }
 clap_complete = "4"
 clap_mangen = "0.2"
+globset = "0.4"
+walkdir = "2"
 
 [dev-dependencies]
 tempfile = "3"
