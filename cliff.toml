@@ -30,8 +30,11 @@ commit_parsers = [
     { message = "^refactor", group = "Refactor" },
     { message = "^style", group = "Styling" },
     { message = "^test", group = "Testing" },
+    { message = "^ci", group = "CI" },
     { message = "^chore\\(release\\)", skip = true },
-    { message = "^chore", group = "Miscellaneous" },
+    { message = "^chore: bump version", skip = true },
+    { message = "^chore: release", skip = true },
+    { message = "^chore", group = "Misc" },
 ]
 filter_commits = false
 tag_pattern = "v[0-9].*"
