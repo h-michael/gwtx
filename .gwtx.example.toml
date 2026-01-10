@@ -8,29 +8,29 @@
 
 # Create directories in the new worktree
 # [[mkdir]]
-# path = "tmp/cache"
-# description = "Cache directory"
-
-# [[mkdir]]
-# path = "build"
-# description = "Build directory"
+# path = "build"                        # required, relative to worktree
+# description = "Build output directory"  # optional
 
 # Create symbolic links from repository root to worktree
 # [[link]]
-# source = ".env.local"
-# target = ".env.local"  # optional, defaults to source
-# on_conflict = "skip"   # optional
-# description = "Local environment"
+# source = ".env.local"                 # required, relative to repo root
+# target = ".env.local"                 # optional, defaults to source
+# on_conflict = "skip"                  # optional, overrides global
+# description = "Local environment"     # optional
+
+# [[link]]
+# source = ".envrc"
+# description = "direnv configuration"
 
 # Glob pattern support: link multiple files at once
 # [[link]]
-# source = "secrets/*"       # matches all files in secrets/
-# skip_tracked = true        # skip git-tracked files (e.g., .gitkeep)
-# description = "Link untracked secret files"
+# source = "fixtures/*"                 # glob pattern: matches all files in fixtures/
+# skip_tracked = true                   # optional, skip git-tracked files (e.g., .gitkeep)
+# description = "Link untracked test fixtures"
 
 # Copy files from repository root to worktree
 # [[copy]]
-# source = ".env.example"
-# target = ".env"
-# on_conflict = "backup"
-# description = "Environment file"
+# source = ".env.example"               # required, relative to repo root
+# target = ".env"                       # optional, defaults to source
+# on_conflict = "backup"                # optional, overrides global
+# description = "Environment file"      # optional

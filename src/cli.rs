@@ -60,7 +60,7 @@ CONFIG FORMAT:
     on_conflict = \"backup\"    # Optional, see CONFLICT MODES below
 
     [[mkdir]]
-    path = \"tmp/cache\"        # Required, relative to worktree
+    path = \"build\"            # Required, relative to worktree
     description = \"...\"       # Optional
 
     [[link]]
@@ -68,7 +68,15 @@ CONFIG FORMAT:
     target = \".env.local\"     # Optional, defaults to source
     on_conflict = \"skip\"      # Optional, overrides global
     description = \"...\"       # Optional
+
+    [[link]]
+    source = \".envrc\"
+    description = \"...\"
+
+    [[link]]
+    source = \"fixtures/*\"     # Glob pattern support
     skip_tracked = true       # Optional, skip git-tracked files (for glob patterns)
+    description = \"...\"
 
     [[copy]]
     source = \".env.example\"   # Required, relative to repo root
@@ -86,7 +94,7 @@ CONFLICT MODES:
 
 GLOB PATTERNS:
     [[link]] supports glob patterns in the source field:
-        source = \"secrets/*\"        Match all files in secrets/
+        source = \"fixtures/*\"       Match all files in fixtures/
         source = \"file?.txt\"        Match single character
         source = \"file[0-9].txt\"    Match character ranges
 

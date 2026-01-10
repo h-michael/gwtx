@@ -57,17 +57,16 @@ Create `.gwtx.toml` in your repository root (see [`.gwtx.example.toml`](.gwtx.ex
 on_conflict = "backup"  # default conflict handling
 
 [[mkdir]]
-path = "tmp/cache"
-description = "Cache directory"
+path = "build"
+description = "Build output directory"
 
 [[link]]
 source = ".env.local"
 description = "Local environment"
 
 [[link]]
-source = "config/credentials.json"
-target = ".credentials.json"
-on_conflict = "skip"
+source = ".envrc"
+description = "direnv configuration"
 
 [[copy]]
 source = ".env.example"
@@ -75,15 +74,17 @@ target = ".env"
 description = "Environment file"
 ```
 
+For all available options, see [`.gwtx.example.toml`](.gwtx.example.toml) or run `gwtx config`.
+
 #### Glob Patterns
 
 You can use glob patterns in `[[link]]` source to match multiple files:
 
 ```toml
 [[link]]
-source = "secrets/*"
+source = "fixtures/*"
 skip_tracked = true
-description = "Link untracked secret files"
+description = "Link untracked test fixtures"
 ```
 
 This is particularly useful when you want to:
@@ -102,14 +103,14 @@ This is particularly useful when you want to:
 
 When you have a directory like:
 ```
-secrets/
+fixtures/
 ├── .gitkeep        (tracked by git)
-├── local.json      (ignored by git)
-└── credentials.env (ignored by git)
+├── test-data.json  (ignored by git)
+└── test-image.png  (ignored by git)
 ```
 
-Using `source = "secrets/*"` with `skip_tracked = true` will:
-- Create symlinks for `local.json` and `credentials.env`
+Using `source = "fixtures/*"` with `skip_tracked = true` will:
+- Create symlinks for `test-data.json` and `test-image.png`
 - Skip `.gitkeep` (leaving the git-tracked file intact)
 - Keep `git status` clean in the worktree
 
