@@ -79,6 +79,10 @@ commit_parsers = [
     { message = "^chore\\(release\\)", skip = true },
     { message = "^chore.*CHANGELOG", skip = true },
 
+    # Skip Dependabot commits (dependency updates)
+    { message = "^chore\\(deps\\)", skip = true },  # Cargo dependencies
+    { message = "^chore\\(ci\\)", skip = true },    # GitHub Actions
+
     # Include all commit types
     { message = "^feat", group = "feat" },          # New features
     { message = "^fix", group = "fix" },            # Bug fixes
