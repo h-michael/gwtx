@@ -196,8 +196,11 @@ git worktree Options:
   -B <name>                 Create or reset branch
   -f, --force               Force creation
   -d, --detach              Detach HEAD
+      --no-checkout         Do not checkout after creation
       --lock                Lock worktree after creation
       --track / --no-track  Branch tracking
+      --guess-remote        Guess remote for tracking
+      --no-guess-remote     Do not guess remote
 
 Shared:
   -q, --quiet               Suppress output
