@@ -28,6 +28,7 @@ fn main() -> ExitCode {
 
     let result = match args.command {
         cli::Command::Add(add_args) => command::add(add_args),
+        cli::Command::Remove(remove_args) => command::remove(remove_args),
         cli::Command::Config(config_args) => command::config(config_args.command),
         cli::Command::Completions { shell } => command::completions(shell),
         cli::Command::Man => command::man(),

@@ -27,7 +27,16 @@ EXAMPLES:
         Preview what would be done without executing
 
     gwtx add --no-setup ../quick
-        Create worktree without running setup")]
+        Create worktree without running setup
+
+    gwtx remove ../feature-branch
+        Remove worktree with safety checks
+
+    gwtx remove --interactive
+        Select worktrees to remove interactively
+
+    gwtx remove --dry-run ../test
+        Preview what would be removed without executing")]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -38,6 +47,9 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Add a new worktree with setup
     Add(AddArgs),
+
+    /// Remove worktrees with safety checks
+    Remove(RemoveArgs),
 
     /// Manage .gwtx.toml configuration
     Config(ConfigArgs),
@@ -200,6 +212,45 @@ pub(crate) struct AddArgs {
 
     // --- Shared Options ---
     /// Suppress output from both gwtx and git worktree
+    #[arg(short, long, help_heading = "Shared Options")]
+    pub quiet: bool,
+}
+
+/// Arguments for the `remove` subcommand.
+#[derive(Parser, Debug)]
+#[command(after_help = "\
+INTERACTIVE MODE KEYBINDINGS:
+    Navigation    ↑/↓, Ctrl+n/p
+    Toggle        Space
+    Confirm       Enter
+    Cancel        Esc, Ctrl+c
+
+SAFETY CHECKS:
+    By default, gwtx remove warns about:
+    - Uncommitted changes (modified/staged files)
+    - Unpushed commits (commits not on remote)
+
+    Use --force to skip safety checks and force removal.")]
+pub(crate) struct RemoveArgs {
+    /// Worktree paths to remove (required unless --interactive)
+    pub paths: Vec<PathBuf>,
+
+    // --- gwtx Options ---
+    /// Interactive mode: select worktrees to remove
+    #[arg(short, long, help_heading = "gwtx Options")]
+    pub interactive: bool,
+
+    /// Preview actions without executing
+    #[arg(long, help_heading = "gwtx Options")]
+    pub dry_run: bool,
+
+    // --- git worktree Options ---
+    /// Force removal even if worktree is dirty or locked
+    #[arg(short, long, help_heading = "git worktree Options")]
+    pub force: bool,
+
+    // --- Shared Options ---
+    /// Suppress output
     #[arg(short, long, help_heading = "Shared Options")]
     pub quiet: bool,
 }

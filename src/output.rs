@@ -87,4 +87,18 @@ impl Output {
             println!("[dry-run] {message}");
         }
     }
+
+    /// Print worktree removal message.
+    pub fn remove(&self, path: &std::path::Path) {
+        if !self.quiet {
+            println!("Removed: {}", path.display());
+        }
+    }
+
+    /// Print safety warning.
+    pub fn safety_warning(&self, path: &std::path::Path, message: &str) {
+        if !self.quiet {
+            println!("Warning: {} - {}", path.display(), message);
+        }
+    }
 }

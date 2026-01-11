@@ -245,3 +245,103 @@ pub(crate) fn prompt_worktree_path(suggested: &str) -> Result<PathBuf> {
     let path = read_line("Worktree path:", Some(suggested))?;
     Ok(PathBuf::from(path))
 }
+
+/// Safety warning information for a worktree.
+#[derive(Debug, Clone)]
+pub(crate) struct SafetyWarning {
+    pub path: PathBuf,
+    pub has_uncommitted: bool,
+    pub modified_count: usize,
+    pub deleted_count: usize,
+    pub untracked_count: usize,
+    pub has_unpushed: bool,
+    pub unpushed_count: usize,
+}
+
+/// Worktree item for display in selector.
+#[derive(Debug, Clone)]
+struct WorktreeItem {
+    display: String,
+    path: PathBuf,
+}
+
+impl std::fmt::Display for WorktreeItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.display)
+    }
+}
+
+/// Prompt user to select worktrees to remove.
+pub(crate) fn prompt_worktree_selection(
+    worktrees: &[crate::git::WorktreeInfo],
+) -> Result<Vec<PathBuf>> {
+    use inquire::MultiSelect;
+
+    if !is_interactive() {
+        return Err(Error::NonInteractive);
+    }
+
+    let items: Vec<WorktreeItem> = worktrees
+        .iter()
+        .filter(|wt| !wt.is_main)
+        .map(|wt| {
+            let branch_info = wt
+                .branch
+                .as_ref()
+                .and_then(|b| b.strip_prefix("refs/heads/"))
+                .unwrap_or("(detached)");
+            let lock_info = if wt.is_locked { " [locked]" } else { "" };
+            WorktreeItem {
+                display: format!("{} ({}){}", wt.path.display(), branch_info, lock_info),
+                path: wt.path.clone(),
+            }
+        })
+        .collect();
+
+    if items.is_empty() {
+        return Err(Error::NoWorktreesToRemove);
+    }
+
+    let selected = MultiSelect::new("Select worktrees to remove:", items)
+        .with_help_message("Space to toggle, Enter to confirm, Esc to cancel")
+        .prompt()
+        .map_err(convert_inquire_error)?;
+
+    if selected.is_empty() {
+        return Err(Error::Aborted);
+    }
+
+    Ok(selected.into_iter().map(|item| item.path).collect())
+}
+
+/// Prompt for confirmation when safety warnings exist.
+pub(crate) fn prompt_remove_confirmation(warnings: &[SafetyWarning]) -> Result<bool> {
+    use inquire::Confirm;
+
+    if !is_interactive() {
+        return Err(Error::NonInteractive);
+    }
+
+    println!("\nWarning: The following worktrees have unsaved work:");
+    for warning in warnings {
+        println!("\n  {}", warning.path.display());
+        if warning.modified_count > 0 {
+            println!("    - {} modified file(s)", warning.modified_count);
+        }
+        if warning.deleted_count > 0 {
+            println!("    - {} deleted file(s)", warning.deleted_count);
+        }
+        if warning.untracked_count > 0 {
+            println!("    - {} untracked file(s)", warning.untracked_count);
+        }
+        if warning.has_unpushed {
+            println!("    - {} unpushed commit(s)", warning.unpushed_count);
+        }
+    }
+    println!();
+
+    Confirm::new("Do you want to proceed with removal?")
+        .with_default(false)
+        .prompt()
+        .map_err(convert_inquire_error)
+}

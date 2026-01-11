@@ -50,6 +50,24 @@ pub(crate) enum Error {
     #[error("Selector error: {message}")]
     Selector { message: String },
 
+    #[error("Cannot remove main worktree: {path}")]
+    CannotRemoveMainWorktree { path: PathBuf },
+
+    #[error("No worktrees available to remove")]
+    NoWorktreesToRemove,
+
+    #[error("Worktree has uncommitted changes: {path}\n  Use --force to remove anyway.")]
+    WorktreeHasUncommittedChanges { path: PathBuf },
+
+    #[error("Worktree has unpushed commits: {path}\n  Use --force to remove anyway.")]
+    WorktreeHasUnpushedCommits { path: PathBuf },
+
+    #[error("Worktree not found: {path}")]
+    WorktreeNotFound { path: PathBuf },
+
+    #[error("git worktree remove failed:\n{stderr}")]
+    GitWorktreeRemoveFailed { stderr: String },
+
     #[cfg(windows)]
     #[error(
         "Failed to create symlink: permission denied\n  Enable Developer Mode in Windows Settings or run as administrator."
