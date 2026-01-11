@@ -1,8 +1,11 @@
 use crate::cli::RemoveArgs;
+use crate::config;
 use crate::error::{Error, Result};
 use crate::git::{self, WorktreeInfo};
+use crate::hook::{self, HookEnv};
 use crate::output::Output;
 use crate::prompt::{self, SafetyWarning};
+use crate::trust;
 
 use std::path::PathBuf;
 
@@ -11,6 +14,34 @@ pub(crate) fn run(args: RemoveArgs) -> Result<()> {
 
     if !git::is_inside_repo() {
         return Err(Error::NotInGitRepo);
+    }
+
+    let repo_root = git::repo_root()?;
+
+    // Initial config load for trust check
+    let initial_config = config::load(&repo_root)?.unwrap_or_default();
+
+    // Trust check for hooks
+    if initial_config.hooks.has_hooks() && !trust::is_trusted(&repo_root, &initial_config.hooks)? {
+        // Display hooks that need trust
+        hook::display_hooks_for_review(&initial_config.hooks);
+
+        eprintln!("\nError: Hooks are not trusted.");
+        eprintln!("The .gwtx.toml file contains hooks that can execute arbitrary commands.");
+        eprintln!("For security, you must explicitly review and trust these hooks.");
+        eprintln!();
+        eprintln!("To trust these hooks, run:");
+        eprintln!("  gwtx trust           # Trust the hooks above");
+        return Err(Error::HooksNotTrusted);
+    }
+
+    // TOCTOU protection: reload config immediately before use
+    let config = config::load(&repo_root)?.unwrap_or_default();
+    if config.hooks.has_hooks() && !trust::is_trusted(&repo_root, &config.hooks)? {
+        eprintln!("\nError: .gwtx.toml was modified after trust check.");
+        eprintln!("For security, hooks must be re-trusted after any changes.");
+        eprintln!("Run: gwtx trust");
+        return Err(Error::HooksNotTrusted);
     }
 
     let worktrees = git::list_worktrees()?;
@@ -59,12 +90,55 @@ pub(crate) fn run(args: RemoveArgs) -> Result<()> {
     }
 
     for path in &targets {
+        // Create hook environment
+        let worktree_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        let hook_env = HookEnv {
+            worktree_path: path.to_string_lossy().to_string(),
+            worktree_name,
+            branch: None, // Branch info not available for remove
+            repo_root: repo_root.to_string_lossy().to_string(),
+        };
+
+        // Run pre_remove hooks
+        if !config.hooks.pre_remove.is_empty() {
+            if args.dry_run {
+                if !args.quiet {
+                    for cmd in &config.hooks.pre_remove {
+                        output.dry_run(&format!("Would run pre_remove hook: {}", cmd));
+                    }
+                }
+            } else {
+                hook::run_pre_remove(&config.hooks, &hook_env, path, args.quiet)?;
+            }
+        }
+
         if args.dry_run {
             output.dry_run(&format!("Would remove: {}", path.display()));
         } else {
             let use_force = args.force || !warnings.is_empty();
             remove_worktree(path, use_force)?;
             output.remove(path);
+        }
+
+        // Run post_remove hooks
+        if !config.hooks.post_remove.is_empty() {
+            if args.dry_run {
+                if !args.quiet {
+                    for cmd in &config.hooks.post_remove {
+                        output.dry_run(&format!("Would run post_remove hook: {}", cmd));
+                    }
+                }
+            } else if let Err(e) =
+                hook::run_post_remove(&config.hooks, &hook_env, &repo_root, args.quiet)
+            {
+                eprintln!("Warning: post_remove hook failed: {}", e);
+                eprintln!("Worktree was removed but post-cleanup may be incomplete.");
+            }
         }
     }
 
