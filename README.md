@@ -28,6 +28,8 @@ See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub R
 
 ## Usage
 
+### Creating Worktrees
+
 ```bash
 # Create a worktree with setup
 gwtx add ../feature-branch
@@ -40,7 +42,37 @@ gwtx add --interactive
 
 # Preview without executing
 gwtx add --dry-run ../test
+```
 
+### Removing Worktrees
+
+```bash
+# Remove a worktree with safety checks
+gwtx remove ../feature-branch
+
+# Interactive mode - select worktrees to remove
+gwtx remove --interactive
+
+# Preview what would be removed
+gwtx remove --dry-run ../feature-branch
+
+# Force removal (skip safety checks and confirmation)
+gwtx remove --force ../feature-branch
+```
+
+**Safety Checks:**
+
+By default, `gwtx remove` warns about:
+- Modified files
+- Deleted files
+- Untracked files
+- Unpushed commits
+
+Use `--force` to bypass all checks and confirmation prompts.
+
+### Configuration Commands
+
+```bash
 # Show config format help
 gwtx config
 
@@ -48,7 +80,7 @@ gwtx config
 gwtx config validate
 ```
 
-### Configuration
+## Configuration
 
 Create `.gwtx.toml` in your repository root (see [`.gwtx.example.toml`](.gwtx.example.toml)):
 
@@ -146,7 +178,9 @@ Set globally in `[options]`, per-operation, or via `--on-conflict` flag.
 
 ## Command Options
 
-gwtx passes through git worktree options:
+### gwtx add
+
+Passes through git worktree options:
 
 ```
 gwtx add [OPTIONS] [PATH] [COMMITISH]
@@ -168,6 +202,32 @@ git worktree Options:
 Shared:
   -q, --quiet               Suppress output
 ```
+
+### gwtx remove
+
+Remove worktrees with safety checks:
+
+```
+gwtx remove [OPTIONS] [PATHS]...
+
+gwtx Options:
+  -i, --interactive         Select worktrees interactively
+      --dry-run             Preview without executing
+
+git worktree Options:
+  -f, --force               Force removal (skip all checks and prompts)
+
+Shared:
+  -q, --quiet               Suppress output
+```
+
+**Interactive Mode Keybindings:**
+- `↑/↓` or `Ctrl+n/p` - Navigate
+- `Space` - Toggle selection
+- `→` (Right arrow) - Select all
+- `←` (Left arrow) - Clear all
+- `Enter` - Confirm
+- `Esc` or `Ctrl+c` - Cancel
 
 ## Shell Completion
 
@@ -228,7 +288,6 @@ For more information, see:
 Planned features for future releases:
 
 - `gwtx config init` - Generate `.gwtx.toml` template
-- `gwtx remove` - Remove worktree with fuzzy search selection
 - Hooks - Run custom scripts (pre-add, post-add)
 
 ## License
