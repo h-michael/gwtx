@@ -34,6 +34,8 @@ commit_parsers = [
     { message = "^chore\\(release\\)", skip = true },
     { message = "^chore: bump version", skip = true },
     { message = "^chore: release", skip = true },
+    { message = "^chore.*CHANGELOG", skip = true },
+    { message = "^chore.*cliff\\.toml", skip = true },
     { message = "^chore", group = "Misc" },
 ]
 filter_commits = false
