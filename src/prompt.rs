@@ -1,10 +1,24 @@
 use crate::config::OnConflict;
 use crate::error::{Error, Result};
 
+use std::borrow::Cow;
 use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 
-use inquire::{InquireError, Select, Text};
+// inquire is used for all platforms (Text, Confirm, and Windows fallback)
+use inquire::{InquireError, Text};
+
+// Unix: Use skim for fuzzy finder
+#[cfg(unix)]
+use skim::prelude::*;
+#[cfg(unix)]
+use std::io::Cursor;
+#[cfg(unix)]
+use std::sync::Arc;
+
+// Windows: Use inquire Select/MultiSelect as fallback
+#[cfg(windows)]
+use inquire::{MultiSelect, Select};
 
 /// Check if stdin and stdout are connected to a terminal.
 pub(crate) fn is_interactive() -> bool {
@@ -21,21 +35,117 @@ fn convert_inquire_error(e: InquireError) -> Error {
     }
 }
 
-/// Run selector with given items (fuzzy search enabled by default).
-fn run_select(prompt: &str, items: Vec<String>) -> Result<String> {
+/// Clear screen (equivalent to termion's clear::All + cursor::Goto(1, 1)).
+#[cfg(unix)]
+fn clear_screen() {
+    use std::io::Write;
+    // ANSI escape sequences:
+    // \x1B[2J = clear entire screen
+    // \x1B[H = move cursor to home position (1, 1)
+    print!("\x1B[2J\x1B[H");
+    std::io::stdout().flush().ok();
+}
+
+// Unix: skim-based selector (fuzzy search enabled)
+#[cfg(unix)]
+fn skim_select(prompt: &str, items: Vec<String>) -> Result<String> {
+    // Calculate height: item count + 2 (prompt/info lines), capped at 20
+    let height = (items.len() + 2).min(20);
+
+    let options = SkimOptionsBuilder::default()
+        .prompt(prompt.to_string())
+        .height(format!("{}", height))
+        .multi(false)
+        .reverse(true)
+        .build()
+        .map_err(|e| Error::Selector {
+            message: format!("Failed to build skim options: {}", e),
+        })?;
+
+    let input = items.join("\n");
+    let item_reader = SkimItemReader::default();
+    let items = item_reader.of_bufread(Cursor::new(input));
+
+    let output = Skim::run_with(&options, Some(items));
+
+    // Clear screen after selection (same as InteractiveScreen.redraw())
+    clear_screen();
+
+    match output {
+        Some(out) if out.is_abort => Err(Error::Aborted),
+        Some(out) if !out.selected_items.is_empty() => {
+            Ok(out.selected_items[0].output().to_string())
+        }
+        _ => Err(Error::Aborted),
+    }
+}
+
+// Unix: skim-based selector (fuzzy search disabled for fixed choices)
+#[cfg(unix)]
+fn skim_select_simple(prompt: &str, items: Vec<String>) -> Result<String> {
+    // Calculate height: item count + 2 (prompt/info lines), capped at 20
+    let height = (items.len() + 2).min(20);
+
+    let options = SkimOptionsBuilder::default()
+        .prompt(prompt.to_string())
+        .height(format!("{}", height))
+        .multi(false)
+        .reverse(true)
+        .exact(true) // Disable fuzzy search
+        .no_sort(true) // Keep original order
+        .build()
+        .map_err(|e| Error::Selector {
+            message: format!("Failed to build skim options: {}", e),
+        })?;
+
+    let input = items.join("\n");
+    let item_reader = SkimItemReader::default();
+    let items = item_reader.of_bufread(Cursor::new(input));
+
+    let output = Skim::run_with(&options, Some(items));
+
+    // Clear screen after selection (same as InteractiveScreen.redraw())
+    clear_screen();
+
+    match output {
+        Some(out) if out.is_abort => Err(Error::Aborted),
+        Some(out) if !out.selected_items.is_empty() => {
+            Ok(out.selected_items[0].output().to_string())
+        }
+        _ => Err(Error::Aborted),
+    }
+}
+
+// Windows: inquire Select as fallback
+#[cfg(windows)]
+fn inquire_select(prompt: &str, items: Vec<String>) -> Result<String> {
     Select::new(prompt, items)
         .without_help_message()
         .prompt()
         .map_err(convert_inquire_error)
 }
 
+/// Run selector with given items (fuzzy search enabled by default).
+fn run_select(prompt: &str, items: Vec<String>) -> Result<String> {
+    #[cfg(unix)]
+    {
+        // Use simple mode (no fuzzy search) for small fixed lists
+        if items.len() <= 5 {
+            skim_select_simple(prompt, items)
+        } else {
+            skim_select(prompt, items)
+        }
+    }
+    #[cfg(windows)]
+    {
+        inquire_select(prompt, items)
+    }
+}
+
 /// Run selector with header message.
 fn run_select_with_message(prompt: &str, message: &str, items: Vec<String>) -> Result<String> {
     println!("{message}");
-    Select::new(prompt, items)
-        .without_help_message()
-        .prompt()
-        .map_err(convert_inquire_error)
+    run_select(prompt, items)
 }
 
 /// Simple text input with optional default value.
@@ -263,6 +373,7 @@ pub(crate) struct SafetyWarning {
 struct WorktreeItem {
     display: String,
     path: PathBuf,
+    index: usize,
 }
 
 impl std::fmt::Display for WorktreeItem {
@@ -271,20 +382,32 @@ impl std::fmt::Display for WorktreeItem {
     }
 }
 
-/// Prompt user to select worktrees to remove.
-pub(crate) fn prompt_worktree_selection(
-    worktrees: &[crate::git::WorktreeInfo],
-) -> Result<Vec<PathBuf>> {
-    use inquire::MultiSelect;
-
-    if !is_interactive() {
-        return Err(Error::NonInteractive);
+// Unix: Implement SkimItem for WorktreeItem
+#[cfg(unix)]
+impl SkimItem for WorktreeItem {
+    fn text(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.display)
     }
 
+    fn output(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.display)
+    }
+
+    // IMPORTANT: get_index() is required in skim 0.14.0+
+    // Without this, Tab key toggles all items instead of current item
+    // See: https://github.com/skim-rs/skim/issues/848
+    fn get_index(&self) -> usize {
+        self.index
+    }
+}
+
+/// Build WorktreeItem list from WorktreeInfo (shared logic).
+fn build_worktree_items(worktrees: &[crate::git::WorktreeInfo]) -> Result<Vec<WorktreeItem>> {
     let items: Vec<WorktreeItem> = worktrees
         .iter()
         .filter(|wt| !wt.is_main)
-        .map(|wt| {
+        .enumerate()
+        .map(|(index, wt)| {
             let branch_info = wt
                 .branch
                 .as_ref()
@@ -294,6 +417,7 @@ pub(crate) fn prompt_worktree_selection(
             WorktreeItem {
                 display: format!("{} ({}){}", wt.path.display(), branch_info, lock_info),
                 path: wt.path.clone(),
+                index,
             }
         })
         .collect();
@@ -301,6 +425,84 @@ pub(crate) fn prompt_worktree_selection(
     if items.is_empty() {
         return Err(Error::NoWorktreesToRemove);
     }
+
+    Ok(items)
+}
+
+/// Prompt user to select worktrees to remove (Unix: skim).
+#[cfg(unix)]
+pub(crate) fn prompt_worktree_selection(
+    worktrees: &[crate::git::WorktreeInfo],
+) -> Result<Vec<PathBuf>> {
+    if !is_interactive() {
+        return Err(Error::NonInteractive);
+    }
+
+    let items = build_worktree_items(worktrees)?;
+
+    // Calculate height: item count + 2 (prompt/info lines), capped at 20
+    let height = (items.len() + 2).min(20);
+
+    let options = SkimOptionsBuilder::default()
+        .prompt("Select worktrees to remove: ".to_string())
+        .height(format!("{}", height))
+        .multi(true)
+        .reverse(true)
+        .no_multi(false) // Ensure multi-select is enabled
+        .build()
+        .map_err(|e| Error::Selector {
+            message: format!("Failed to build skim options: {}", e),
+        })?;
+
+    let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
+    for item in &items {
+        let _ = tx.send(Arc::new(item.clone()));
+    }
+    drop(tx);
+
+    let output = Skim::run_with(&options, Some(rx));
+
+    // Clear screen after selection (same as InteractiveScreen.redraw())
+    clear_screen();
+
+    match output {
+        Some(out) if out.is_abort => Err(Error::Aborted),
+        Some(out) if out.selected_items.is_empty() => Err(Error::Aborted),
+        Some(out) => {
+            // Get selected display strings
+            let selected_displays: Vec<String> = out
+                .selected_items
+                .iter()
+                .map(|item| item.output().to_string())
+                .collect();
+
+            // Match display strings to original items to get paths
+            let paths: Vec<PathBuf> = selected_displays
+                .iter()
+                .filter_map(|display| {
+                    items
+                        .iter()
+                        .find(|item| &item.display == display)
+                        .map(|item| item.path.clone())
+                })
+                .collect();
+
+            Ok(paths)
+        }
+        None => Err(Error::Aborted),
+    }
+}
+
+/// Prompt user to select worktrees to remove (Windows: inquire fallback).
+#[cfg(windows)]
+pub(crate) fn prompt_worktree_selection(
+    worktrees: &[crate::git::WorktreeInfo],
+) -> Result<Vec<PathBuf>> {
+    if !is_interactive() {
+        return Err(Error::NonInteractive);
+    }
+
+    let items = build_worktree_items(worktrees)?;
 
     let selected = MultiSelect::new("Select worktrees to remove:", items)
         .with_help_message("Space to toggle, Enter to confirm, Esc to cancel")
@@ -344,6 +546,140 @@ pub(crate) fn prompt_remove_confirmation(warnings: &[SafetyWarning]) -> Result<b
         .with_default(false)
         .prompt()
         .map_err(convert_inquire_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::WorktreeInfo;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_build_worktree_items_filters_main() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-1"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature-1".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+        ];
+
+        let result = build_worktree_items(&worktrees).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path, PathBuf::from("/repo/feature-1"));
+    }
+
+    #[test]
+    fn test_build_worktree_items_assigns_index() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-1"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature-1".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-2"),
+                head: "ghi789".to_string(),
+                branch: Some("refs/heads/feature-2".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+        ];
+
+        let result = build_worktree_items(&worktrees).unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].index, 0);
+        assert_eq!(result[1].index, 1);
+    }
+
+    #[test]
+    fn test_build_worktree_items_formats_display() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-1"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature-1".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-2"),
+                head: "ghi789".to_string(),
+                branch: None,
+                is_main: false,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-3"),
+                head: "jkl012".to_string(),
+                branch: Some("refs/heads/feature-3".to_string()),
+                is_main: false,
+                is_locked: true,
+            },
+        ];
+
+        let result = build_worktree_items(&worktrees).unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert!(result[0].display.contains("feature-1"));
+        assert!(result[1].display.contains("(detached)"));
+        assert!(result[2].display.contains("[locked]"));
+    }
+
+    #[test]
+    fn test_build_worktree_items_empty() {
+        let worktrees = vec![WorktreeInfo {
+            path: PathBuf::from("/repo/.git"),
+            head: "abc123".to_string(),
+            branch: Some("refs/heads/main".to_string()),
+            is_main: true,
+            is_locked: false,
+        }];
+
+        let result = build_worktree_items(&worktrees);
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::NoWorktreesToRemove));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_worktree_item_get_index() {
+        let item = WorktreeItem {
+            display: "test".to_string(),
+            path: PathBuf::from("/test"),
+            index: 42,
+        };
+
+        assert_eq!(item.get_index(), 42);
+    }
 }
 
 /// Prompt user to trust hooks
