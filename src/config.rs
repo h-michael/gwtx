@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Config file name
 pub const CONFIG_FILE_NAME: &str = ".gwtx.toml";
@@ -50,16 +50,24 @@ struct RawOptions {
     on_conflict: Option<OnConflict>,
 }
 
+/// Hook entry with command and optional description.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub(crate) struct HookEntry {
+    pub command: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct RawHooks {
     #[serde(default)]
-    pre_add: Vec<String>,
+    pre_add: Vec<HookEntry>,
     #[serde(default)]
-    post_add: Vec<String>,
+    post_add: Vec<HookEntry>,
     #[serde(default)]
-    pre_remove: Vec<String>,
+    pre_remove: Vec<HookEntry>,
     #[serde(default)]
-    post_remove: Vec<String>,
+    post_remove: Vec<HookEntry>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -271,10 +279,10 @@ pub(crate) struct Options {
 /// Hook commands configuration.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Hooks {
-    pub pre_add: Vec<String>,
-    pub post_add: Vec<String>,
-    pub pre_remove: Vec<String>,
-    pub post_remove: Vec<String>,
+    pub pre_add: Vec<HookEntry>,
+    pub post_add: Vec<HookEntry>,
+    pub pre_remove: Vec<HookEntry>,
+    pub post_remove: Vec<HookEntry>,
 }
 
 impl Hooks {
@@ -522,7 +530,10 @@ mod tests {
     #[test]
     fn test_hooks_has_hooks_with_pre_add() {
         let hooks = Hooks {
-            pre_add: vec!["echo test".to_string()],
+            pre_add: vec![HookEntry {
+                command: "echo test".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
         assert!(hooks.has_hooks());
@@ -531,7 +542,10 @@ mod tests {
     #[test]
     fn test_hooks_has_hooks_with_post_add() {
         let hooks = Hooks {
-            post_add: vec!["npm install".to_string()],
+            post_add: vec![HookEntry {
+                command: "npm install".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
         assert!(hooks.has_hooks());
@@ -540,7 +554,10 @@ mod tests {
     #[test]
     fn test_hooks_has_hooks_with_pre_remove() {
         let hooks = Hooks {
-            pre_remove: vec!["echo cleanup".to_string()],
+            pre_remove: vec![HookEntry {
+                command: "echo cleanup".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
         assert!(hooks.has_hooks());
@@ -549,7 +566,10 @@ mod tests {
     #[test]
     fn test_hooks_has_hooks_with_post_remove() {
         let hooks = Hooks {
-            post_remove: vec!["./scripts/cleanup.sh".to_string()],
+            post_remove: vec![HookEntry {
+                command: "./scripts/cleanup.sh".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
         assert!(hooks.has_hooks());
@@ -558,28 +578,44 @@ mod tests {
     #[test]
     fn test_parse_config_with_hooks() {
         let toml = r#"
-            [hooks]
-            pre_add = ["echo 'pre add'"]
-            post_add = ["npm install", "mise install"]
-            pre_remove = ["echo 'pre remove'"]
-            post_remove = ["./scripts/cleanup.sh"]
+            [[hooks.pre_add]]
+            command = "echo 'pre add'"
+
+            [[hooks.post_add]]
+            command = "npm install"
+
+            [[hooks.post_add]]
+            command = "mise install"
+            description = "Install mise tools"
+
+            [[hooks.pre_remove]]
+            command = "echo 'pre remove'"
+
+            [[hooks.post_remove]]
+            command = "./scripts/cleanup.sh"
         "#;
 
         let raw: RawConfig = toml::from_str(toml).unwrap();
         let config = Config::try_from(raw).unwrap();
 
         assert_eq!(config.hooks.pre_add.len(), 1);
-        assert_eq!(config.hooks.pre_add[0], "echo 'pre add'");
+        assert_eq!(config.hooks.pre_add[0].command, "echo 'pre add'");
+        assert_eq!(config.hooks.pre_add[0].description, None);
 
         assert_eq!(config.hooks.post_add.len(), 2);
-        assert_eq!(config.hooks.post_add[0], "npm install");
-        assert_eq!(config.hooks.post_add[1], "mise install");
+        assert_eq!(config.hooks.post_add[0].command, "npm install");
+        assert_eq!(config.hooks.post_add[0].description, None);
+        assert_eq!(config.hooks.post_add[1].command, "mise install");
+        assert_eq!(
+            config.hooks.post_add[1].description,
+            Some("Install mise tools".to_string())
+        );
 
         assert_eq!(config.hooks.pre_remove.len(), 1);
-        assert_eq!(config.hooks.pre_remove[0], "echo 'pre remove'");
+        assert_eq!(config.hooks.pre_remove[0].command, "echo 'pre remove'");
 
         assert_eq!(config.hooks.post_remove.len(), 1);
-        assert_eq!(config.hooks.post_remove[0], "./scripts/cleanup.sh");
+        assert_eq!(config.hooks.post_remove[0].command, "./scripts/cleanup.sh");
     }
 
     #[test]

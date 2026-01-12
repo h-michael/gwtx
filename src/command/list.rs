@@ -1,10 +1,11 @@
 use crate::cli::ListArgs;
+use crate::color::{ColorConfig, ColorScheme};
 use crate::error::{Error, Result};
 use crate::git::{self, WorktreeInfo};
 use crate::output::Output;
 
-pub(crate) fn run(args: ListArgs) -> Result<()> {
-    let output = Output::new(false);
+pub(crate) fn run(args: ListArgs, color: ColorConfig) -> Result<()> {
+    let output = Output::new(false, color);
 
     if !git::is_inside_repo() {
         return Err(Error::NotInGitRepo);
@@ -33,7 +34,7 @@ pub(crate) fn run(args: ListArgs) -> Result<()> {
         }
 
         for wt in worktrees {
-            display_worktree(&wt, &output, max_path_len, max_branch_len)?;
+            display_worktree(&wt, &output, max_path_len, max_branch_len, color)?;
         }
     }
 
@@ -54,34 +55,66 @@ fn display_worktree(
     output: &Output,
     max_path_len: usize,
     max_branch_len: usize,
+    color: ColorConfig,
 ) -> Result<()> {
     let path_str = wt.path.display().to_string();
-    let mut parts = vec![format!("{:width$}", path_str, width = max_path_len)];
+    let branch = branch_display(&wt.branch);
+    let short_hash = wt.head.chars().take(7).collect::<String>();
+
+    // Format fields with padding first, then apply colors
+    let path_field = format!("{:width$}", path_str, width = max_path_len);
+    let branch_field = format!("{:width$}", branch, width = max_branch_len);
+    let hash_field = format!("{:width$}", short_hash, width = 7);
+
+    let mut parts = Vec::new();
+
+    // Path (white/default color)
+    parts.push(path_field);
 
     // Locked tag
     if wt.is_locked {
-        parts.push("[locked]".to_string());
+        if color.is_enabled() {
+            parts.push(ColorScheme::locked("[locked]"));
+        } else {
+            parts.push("[locked]".to_string());
+        }
     }
 
-    // Branch name (aligned)
-    let branch = branch_display(&wt.branch);
-    parts.push(format!("{:width$}", branch, width = max_branch_len));
+    // Branch name
+    if color.is_enabled() {
+        parts.push(ColorScheme::branch(&branch_field));
+    } else {
+        parts.push(branch_field);
+    }
 
-    // Commit hash (first 7 chars)
-    let short_hash = wt.head.chars().take(7).collect::<String>();
-    parts.push(format!("{:width$}", short_hash, width = 7));
+    // Commit hash
+    if color.is_enabled() {
+        parts.push(ColorScheme::hash(&hash_field));
+    } else {
+        parts.push(hash_field);
+    }
 
     // Get status (best effort - don't fail if worktree is missing)
     if let Ok(status) = git::worktree_status(&wt.path) {
         if status.has_uncommitted_changes {
-            parts.push(uncommitted_display(&status));
+            let status_str = uncommitted_display(&status);
+            if color.is_enabled() {
+                parts.push(ColorScheme::status(&status_str));
+            } else {
+                parts.push(status_str);
+            }
         }
     }
 
     // Get unpushed commits (best effort)
     if let Ok(unpushed) = git::worktree_unpushed_commits(&wt.path) {
         if unpushed.has_unpushed {
-            parts.push(format!("[unpushed: {} commits]", unpushed.count));
+            let unpushed_str = format!("[unpushed: {} commits]", unpushed.count);
+            if color.is_enabled() {
+                parts.push(ColorScheme::unpushed(&unpushed_str));
+            } else {
+                parts.push(unpushed_str);
+            }
         }
     }
 
@@ -96,18 +129,8 @@ fn branch_display(branch: &Option<String>) -> &str {
         .unwrap_or("detached")
 }
 
-fn uncommitted_display(status: &crate::git::WorktreeStatus) -> String {
-    let mut parts = vec![];
-    if status.modified_count > 0 {
-        parts.push(format!("{} modified", status.modified_count));
-    }
-    if status.deleted_count > 0 {
-        parts.push(format!("{} deleted", status.deleted_count));
-    }
-    if status.untracked_count > 0 {
-        parts.push(format!("{} untracked", status.untracked_count));
-    }
-    format!("[uncommitted: {}]", parts.join(", "))
+fn uncommitted_display(_status: &crate::git::WorktreeStatus) -> String {
+    "*".to_string()
 }
 
 #[cfg(test)]
@@ -136,8 +159,6 @@ mod tests {
             untracked_count: 3,
         };
         let result = uncommitted_display(&status);
-        assert!(result.contains("2 modified"));
-        assert!(result.contains("1 deleted"));
-        assert!(result.contains("3 untracked"));
+        assert_eq!(result, "*");
     }
 }

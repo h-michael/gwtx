@@ -1,5 +1,8 @@
 use crate::cli::TrustArgs;
+use crate::color::ColorScheme;
 use crate::{config, error::Error, error::Result, git, prompt, trust};
+
+use std::io::IsTerminal;
 
 pub(crate) fn run(args: TrustArgs) -> Result<()> {
     let repo_root = match args.path {
@@ -17,29 +20,127 @@ pub(crate) fn run(args: TrustArgs) -> Result<()> {
     }
 
     if args.show {
+        let use_color = std::io::stdout().is_terminal();
+
         println!("Hooks in {}:", repo_root.display());
         if !config.hooks.pre_add.is_empty() {
-            println!("\npre_add:");
-            for cmd in &config.hooks.pre_add {
-                println!("  - {}", cmd);
+            println!();
+            if use_color {
+                println!("{}", ColorScheme::hook_type("pre_add:"));
+            } else {
+                println!("pre_add:");
+            }
+            for entry in &config.hooks.pre_add {
+                println!("  {}", entry.command);
+                if let Some(desc) = &entry.description {
+                    if use_color {
+                        println!(
+                            "  {} {}",
+                            ColorScheme::hook_arrow("->"),
+                            ColorScheme::hook_description(desc)
+                        );
+                    } else {
+                        println!("  -> {}", desc);
+                    }
+                } else if use_color {
+                    println!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::dimmed("no description")
+                    );
+                } else {
+                    println!("  -> no description");
+                }
             }
         }
         if !config.hooks.post_add.is_empty() {
-            println!("\npost_add:");
-            for cmd in &config.hooks.post_add {
-                println!("  - {}", cmd);
+            println!();
+            if use_color {
+                println!("{}", ColorScheme::hook_type("post_add:"));
+            } else {
+                println!("post_add:");
+            }
+            for entry in &config.hooks.post_add {
+                println!("  {}", entry.command);
+                if let Some(desc) = &entry.description {
+                    if use_color {
+                        println!(
+                            "  {} {}",
+                            ColorScheme::hook_arrow("->"),
+                            ColorScheme::hook_description(desc)
+                        );
+                    } else {
+                        println!("  -> {}", desc);
+                    }
+                } else if use_color {
+                    println!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::dimmed("no description")
+                    );
+                } else {
+                    println!("  -> no description");
+                }
             }
         }
         if !config.hooks.pre_remove.is_empty() {
-            println!("\npre_remove:");
-            for cmd in &config.hooks.pre_remove {
-                println!("  - {}", cmd);
+            println!();
+            if use_color {
+                println!("{}", ColorScheme::hook_type("pre_remove:"));
+            } else {
+                println!("pre_remove:");
+            }
+            for entry in &config.hooks.pre_remove {
+                println!("  {}", entry.command);
+                if let Some(desc) = &entry.description {
+                    if use_color {
+                        println!(
+                            "  {} {}",
+                            ColorScheme::hook_arrow("->"),
+                            ColorScheme::hook_description(desc)
+                        );
+                    } else {
+                        println!("  -> {}", desc);
+                    }
+                } else if use_color {
+                    println!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::dimmed("no description")
+                    );
+                } else {
+                    println!("  -> no description");
+                }
             }
         }
         if !config.hooks.post_remove.is_empty() {
-            println!("\npost_remove:");
-            for cmd in &config.hooks.post_remove {
-                println!("  - {}", cmd);
+            println!();
+            if use_color {
+                println!("{}", ColorScheme::hook_type("post_remove:"));
+            } else {
+                println!("post_remove:");
+            }
+            for entry in &config.hooks.post_remove {
+                println!("  {}", entry.command);
+                if let Some(desc) = &entry.description {
+                    if use_color {
+                        println!(
+                            "  {} {}",
+                            ColorScheme::hook_arrow("->"),
+                            ColorScheme::hook_description(desc)
+                        );
+                    } else {
+                        println!("  -> {}", desc);
+                    }
+                } else if use_color {
+                    println!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::dimmed("no description")
+                    );
+                } else {
+                    println!("  -> no description");
+                }
             }
         }
 
@@ -52,36 +153,136 @@ pub(crate) fn run(args: TrustArgs) -> Result<()> {
     }
 
     // Display hooks
-    println!();
-    println!("WARNING: Review these commands before trusting");
+    let use_color = std::io::stdout().is_terminal();
+
+    if use_color {
+        println!(
+            "{}",
+            ColorScheme::warning("WARNING: Review these commands before trusting")
+        );
+    } else {
+        println!("WARNING: Review these commands before trusting");
+    }
     println!();
     println!("Repository: {}", repo_root.display());
 
     if !config.hooks.pre_add.is_empty() {
-        println!("pre_add (before worktree creation):");
-        for cmd in &config.hooks.pre_add {
-            println!("  $ {}", cmd);
+        if use_color {
+            println!("{}", ColorScheme::hook_type("pre_add:"));
+        } else {
+            println!("pre_add:");
+        }
+        for entry in &config.hooks.pre_add {
+            println!("  {}", entry.command);
+            if let Some(desc) = &entry.description {
+                if use_color {
+                    println!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::hook_description(desc)
+                    );
+                } else {
+                    println!("  -> {}", desc);
+                }
+            } else if use_color {
+                println!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::dimmed("no description")
+                );
+            } else {
+                println!("  -> no description");
+            }
         }
         println!();
     }
     if !config.hooks.post_add.is_empty() {
-        println!("post_add (after worktree creation):");
-        for cmd in &config.hooks.post_add {
-            println!("  $ {}", cmd);
+        if use_color {
+            println!("{}", ColorScheme::hook_type("post_add:"));
+        } else {
+            println!("post_add:");
+        }
+        for entry in &config.hooks.post_add {
+            println!("  {}", entry.command);
+            if let Some(desc) = &entry.description {
+                if use_color {
+                    println!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::hook_description(desc)
+                    );
+                } else {
+                    println!("  -> {}", desc);
+                }
+            } else if use_color {
+                println!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::dimmed("no description")
+                );
+            } else {
+                println!("  -> no description");
+            }
         }
         println!();
     }
     if !config.hooks.pre_remove.is_empty() {
-        println!("pre_remove (before worktree removal):");
-        for cmd in &config.hooks.pre_remove {
-            println!("  $ {}", cmd);
+        if use_color {
+            println!("{}", ColorScheme::hook_type("pre_remove:"));
+        } else {
+            println!("pre_remove:");
+        }
+        for entry in &config.hooks.pre_remove {
+            println!("  {}", entry.command);
+            if let Some(desc) = &entry.description {
+                if use_color {
+                    println!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::hook_description(desc)
+                    );
+                } else {
+                    println!("  -> {}", desc);
+                }
+            } else if use_color {
+                println!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::dimmed("no description")
+                );
+            } else {
+                println!("  -> no description");
+            }
         }
         println!();
     }
     if !config.hooks.post_remove.is_empty() {
-        println!("post_remove (after worktree removal):");
-        for cmd in &config.hooks.post_remove {
-            println!("  $ {}", cmd);
+        if use_color {
+            println!("{}", ColorScheme::hook_type("post_remove:"));
+        } else {
+            println!("post_remove:");
+        }
+        for entry in &config.hooks.post_remove {
+            println!("  {}", entry.command);
+            if let Some(desc) = &entry.description {
+                if use_color {
+                    println!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::hook_description(desc)
+                    );
+                } else {
+                    println!("  -> {}", desc);
+                }
+            } else if use_color {
+                println!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::dimmed("no description")
+                );
+            } else {
+                println!("  -> no description");
+            }
         }
         println!();
     }

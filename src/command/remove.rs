@@ -1,4 +1,5 @@
 use crate::cli::RemoveArgs;
+use crate::color::ColorConfig;
 use crate::config;
 use crate::error::{Error, Result};
 use crate::git::{self, WorktreeInfo};
@@ -9,8 +10,8 @@ use crate::trust;
 
 use std::path::PathBuf;
 
-pub(crate) fn run(args: RemoveArgs) -> Result<()> {
-    let output = Output::new(args.quiet);
+pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
+    let output = Output::new(args.quiet, color);
 
     if !git::is_inside_repo() {
         return Err(Error::NotInGitRepo);
@@ -26,12 +27,13 @@ pub(crate) fn run(args: RemoveArgs) -> Result<()> {
         // Display hooks that need trust
         hook::display_hooks_for_review(&initial_config.hooks);
 
-        eprintln!("\nError: Hooks are not trusted.");
+        eprintln!();
+        eprintln!("Error: Hooks are not trusted.");
         eprintln!("The .gwtx.toml file contains hooks that can execute arbitrary commands.");
         eprintln!("For security, you must explicitly review and trust these hooks.");
         eprintln!();
         eprintln!("To trust these hooks, run:");
-        eprintln!("  gwtx trust           # Trust the hooks above");
+        eprintln!("  gwtx trust");
         return Err(Error::HooksNotTrusted);
     }
 
@@ -108,12 +110,13 @@ pub(crate) fn run(args: RemoveArgs) -> Result<()> {
         if !config.hooks.pre_remove.is_empty() {
             if args.dry_run {
                 if !args.quiet {
-                    for cmd in &config.hooks.pre_remove {
-                        output.dry_run(&format!("Would run pre_remove hook: {}", cmd));
+                    for entry in &config.hooks.pre_remove {
+                        let display = entry.description.as_deref().unwrap_or(&entry.command);
+                        output.dry_run(&format!("Would run pre_remove hook: {}", display));
                     }
                 }
             } else {
-                hook::run_pre_remove(&config.hooks, &hook_env, path, args.quiet)?;
+                hook::run_pre_remove(&config.hooks, &hook_env, path, &output)?;
             }
         }
 
@@ -129,15 +132,21 @@ pub(crate) fn run(args: RemoveArgs) -> Result<()> {
         if !config.hooks.post_remove.is_empty() {
             if args.dry_run {
                 if !args.quiet {
-                    for cmd in &config.hooks.post_remove {
-                        output.dry_run(&format!("Would run post_remove hook: {}", cmd));
+                    for entry in &config.hooks.post_remove {
+                        let display = entry.description.as_deref().unwrap_or(&entry.command);
+                        output.dry_run(&format!("Would run post_remove hook: {}", display));
                     }
                 }
             } else if let Err(e) =
-                hook::run_post_remove(&config.hooks, &hook_env, &repo_root, args.quiet)
+                hook::run_post_remove(&config.hooks, &hook_env, &repo_root, &output)
             {
-                eprintln!("Warning: post_remove hook failed: {}", e);
-                eprintln!("Worktree was removed but post-cleanup may be incomplete.");
+                // Extract exit code from error if available
+                let exit_code = match &e {
+                    Error::HookFailed { exit_code, .. } => *exit_code,
+                    _ => None,
+                };
+                output.hook_warning("post_remove", &e.to_string(), exit_code);
+                output.hook_note("Worktree was removed but post-cleanup may be incomplete.");
             }
         }
     }

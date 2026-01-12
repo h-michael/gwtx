@@ -13,6 +13,18 @@ CONFIGURATION:
     gwtx reads .gwtx.toml from the repository root for setup instructions.
     See https://github.com/h-michael/git-setup-worktree for config format.
 
+COLOR OUTPUT:
+    gwtx uses colored output for better readability. Control with:
+
+    --color=always    Always use colors (useful when piping: gwtx list --color=always | less -R)
+    --color=never     Never use colors (or use --no-color)
+    --color=auto      Auto-detect terminal (default)
+
+    Environment:
+    NO_COLOR          When set to non-empty value, disables colors (https://no-color.org/)
+
+    Priority: --color flag > NO_COLOR env > terminal detection
+
 EXAMPLES:
     gwtx add ../feature-branch
         Create worktree and run setup from .gwtx.toml
@@ -46,6 +58,20 @@ EXAMPLES:
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Command,
+
+    /// When to use colored output (always, auto, never)
+    #[arg(
+        long,
+        global = true,
+        value_name = "WHEN",
+        default_value = "auto",
+        conflicts_with = "no_color"
+    )]
+    pub color: clap::ColorChoice,
+
+    /// Disable colored output (equivalent to --color=never)
+    #[arg(long, global = true)]
+    pub no_color: bool,
 }
 
 /// Available subcommands.
@@ -112,11 +138,19 @@ CONFIG FORMAT:
     on_conflict = \"backup\"    # Optional, overrides global
     description = \"...\"       # Optional
 
-    [hooks]
-    pre_add = [\"echo 'Setting up {{worktree_name}}'\"]
-    post_add = [\"cd {{worktree_path}} && npm install\"]
-    pre_remove = [\"echo 'Cleaning up {{worktree_name}}'\"]
-    post_remove = [\"./scripts/cleanup.sh\"]
+    [[hooks.pre_add]]
+    command = \"echo 'Setting up {{worktree_name}}'\"
+
+    [[hooks.post_add]]
+    command = \"npm install\"
+    description = \"Install dependencies\"  # Optional
+
+    [[hooks.pre_remove]]
+    command = \"echo 'Cleaning up {{worktree_name}}'\"
+
+    [[hooks.post_remove]]
+    command = \"./scripts/cleanup.sh\"
+    description = \"Run cleanup script\"
 
 CONFLICT MODES:
     abort      Stop immediately when a conflict is found
@@ -138,6 +172,11 @@ GLOB PATTERNS:
 HOOKS:
     Hooks run custom commands before/after worktree operations.
     Require explicit trust via 'gwtx trust' before execution.
+
+    Format:
+        [[hooks.pre_add]]
+        command = \"...\"       # Required: shell command to execute
+        description = \"...\"   # Optional: human-readable description
 
     Execution order (gwtx add):
         1. pre_add (repo_root) → 2. git worktree add →
@@ -298,6 +337,9 @@ pub(crate) struct RemoveArgs {
 /// Arguments for the `list` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
+STATUS SYMBOLS:
+    *  Uncommitted changes (modified, deleted, or untracked files)
+
 EXAMPLES:
     gwtx list
         List all worktrees with detailed information (branch, commit, status)

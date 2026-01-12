@@ -1,4 +1,4 @@
-use crate::config::Hooks;
+use crate::config::{HookEntry, Hooks};
 use crate::error::{Error, Result};
 
 use std::fs;
@@ -19,10 +19,10 @@ pub(crate) struct TrustEntry {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct TrustHooks {
-    pub pre_add: Vec<String>,
-    pub post_add: Vec<String>,
-    pub pre_remove: Vec<String>,
-    pub post_remove: Vec<String>,
+    pub pre_add: Vec<HookEntry>,
+    pub post_add: Vec<HookEntry>,
+    pub pre_remove: Vec<HookEntry>,
+    pub post_remove: Vec<HookEntry>,
 }
 
 /// Get trust storage directory
@@ -43,17 +43,18 @@ pub(crate) fn compute_hash(repo_root: &Path, hooks: &Hooks) -> Result<String> {
     hasher.update(canonical_root.to_string_lossy().as_bytes());
     hasher.update(b"\n");
 
-    for cmd in &hooks.pre_add {
-        hasher.update(format!("pre_add:{}\n", cmd).as_bytes());
+    for entry in &hooks.pre_add {
+        hasher.update(format!("pre_add:{}:{:?}\n", entry.command, entry.description).as_bytes());
     }
-    for cmd in &hooks.post_add {
-        hasher.update(format!("post_add:{}\n", cmd).as_bytes());
+    for entry in &hooks.post_add {
+        hasher.update(format!("post_add:{}:{:?}\n", entry.command, entry.description).as_bytes());
     }
-    for cmd in &hooks.pre_remove {
-        hasher.update(format!("pre_remove:{}\n", cmd).as_bytes());
+    for entry in &hooks.pre_remove {
+        hasher.update(format!("pre_remove:{}:{:?}\n", entry.command, entry.description).as_bytes());
     }
-    for cmd in &hooks.post_remove {
-        hasher.update(format!("post_remove:{}\n", cmd).as_bytes());
+    for entry in &hooks.post_remove {
+        hasher
+            .update(format!("post_remove:{}:{:?}\n", entry.command, entry.description).as_bytes());
     }
 
     Ok(format!("{:x}", hasher.finalize()))
@@ -188,12 +189,18 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         let hooks1 = Hooks {
-            pre_add: vec!["echo 'test1'".to_string()],
+            pre_add: vec![HookEntry {
+                command: "echo 'test1'".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
 
         let hooks2 = Hooks {
-            pre_add: vec!["echo 'test2'".to_string()],
+            pre_add: vec![HookEntry {
+                command: "echo 'test2'".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
 
@@ -215,7 +222,10 @@ mod tests {
     fn test_trust_and_untrust() {
         let temp_dir = TempDir::new().unwrap();
         let hooks = Hooks {
-            pre_add: vec!["echo 'test'".to_string()],
+            pre_add: vec![HookEntry {
+                command: "echo 'test'".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
 
@@ -245,8 +255,14 @@ mod tests {
     fn test_list_trusted_with_trusted_repo() {
         let temp_dir = TempDir::new().unwrap();
         let hooks = Hooks {
-            pre_add: vec!["echo 'test'".to_string()],
-            post_add: vec!["npm install".to_string()],
+            pre_add: vec![HookEntry {
+                command: "echo 'test'".to_string(),
+                description: None,
+            }],
+            post_add: vec![HookEntry {
+                command: "npm install".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
 
@@ -273,12 +289,18 @@ mod tests {
         let temp_dir2 = TempDir::new().unwrap();
 
         let hooks1 = Hooks {
-            pre_add: vec!["echo 'repo1'".to_string()],
+            pre_add: vec![HookEntry {
+                command: "echo 'repo1'".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
 
         let hooks2 = Hooks {
-            pre_add: vec!["echo 'repo2'".to_string()],
+            pre_add: vec![HookEntry {
+                command: "echo 'repo2'".to_string(),
+                description: None,
+            }],
             ..Default::default()
         };
 
@@ -312,10 +334,22 @@ mod tests {
     fn test_trust_entry_contains_hooks() {
         let temp_dir = TempDir::new().unwrap();
         let hooks = Hooks {
-            pre_add: vec!["echo 'pre'".to_string()],
-            post_add: vec!["npm install".to_string()],
-            pre_remove: vec!["echo 'cleanup'".to_string()],
-            post_remove: vec!["./scripts/cleanup.sh".to_string()],
+            pre_add: vec![HookEntry {
+                command: "echo 'pre'".to_string(),
+                description: None,
+            }],
+            post_add: vec![HookEntry {
+                command: "npm install".to_string(),
+                description: None,
+            }],
+            pre_remove: vec![HookEntry {
+                command: "echo 'cleanup'".to_string(),
+                description: None,
+            }],
+            post_remove: vec![HookEntry {
+                command: "./scripts/cleanup.sh".to_string(),
+                description: None,
+            }],
         };
 
         // Trust the hooks
@@ -344,5 +378,135 @@ mod tests {
 
         // Cleanup
         untrust(temp_dir.path(), &hooks).unwrap();
+    }
+
+    #[test]
+    fn test_is_trusted_hooks_changed() {
+        let temp_dir = TempDir::new().unwrap();
+        let hooks1 = Hooks {
+            pre_add: vec![HookEntry {
+                command: "echo 'original'".to_string(),
+                description: None,
+            }],
+            ..Default::default()
+        };
+
+        // Trust the original hooks
+        trust(temp_dir.path(), &hooks1).unwrap();
+        assert!(is_trusted(temp_dir.path(), &hooks1).unwrap());
+
+        // Change the hooks (different command)
+        let hooks2 = Hooks {
+            pre_add: vec![HookEntry {
+                command: "echo 'modified'".to_string(),
+                description: None,
+            }],
+            ..Default::default()
+        };
+
+        // Should not be trusted anymore
+        assert!(!is_trusted(temp_dir.path(), &hooks2).unwrap());
+
+        // Cleanup
+        untrust(temp_dir.path(), &hooks1).unwrap();
+    }
+
+    #[test]
+    fn test_is_trusted_hooks_removed() {
+        let temp_dir = TempDir::new().unwrap();
+        let hooks = Hooks {
+            pre_add: vec![HookEntry {
+                command: "echo 'test'".to_string(),
+                description: None,
+            }],
+            ..Default::default()
+        };
+
+        // Trust the hooks
+        trust(temp_dir.path(), &hooks).unwrap();
+        assert!(is_trusted(temp_dir.path(), &hooks).unwrap());
+
+        // Remove hooks (empty hooks)
+        let empty_hooks = Hooks::default();
+
+        // Empty hooks should be implicitly trusted
+        assert!(is_trusted(temp_dir.path(), &empty_hooks).unwrap());
+
+        // Cleanup
+        untrust(temp_dir.path(), &hooks).unwrap();
+    }
+
+    #[test]
+    fn test_is_trusted_different_repo_root() {
+        use std::fs;
+
+        let temp_dir1 = TempDir::new().unwrap();
+        let temp_dir2 = TempDir::new().unwrap();
+
+        let hooks = Hooks {
+            pre_add: vec![HookEntry {
+                command: "echo 'test'".to_string(),
+                description: None,
+            }],
+            ..Default::default()
+        };
+
+        // Trust hooks for temp_dir1
+        trust(temp_dir1.path(), &hooks).unwrap();
+        assert!(is_trusted(temp_dir1.path(), &hooks).unwrap());
+
+        // Manually create trust file for same hooks hash but with different repo_root
+        let hash = compute_hash(temp_dir1.path(), &hooks).unwrap();
+        let trust_file = trust_dir().unwrap().join(format!("{}.toml", hash));
+
+        // Overwrite with different repo_root
+        let fake_entry = TrustEntry {
+            repo_root: temp_dir2.path().canonicalize().unwrap(),
+            hooks: TrustHooks {
+                pre_add: hooks.pre_add.clone(),
+                post_add: hooks.post_add.clone(),
+                pre_remove: hooks.pre_remove.clone(),
+                post_remove: hooks.post_remove.clone(),
+            },
+            trusted_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let content = toml::to_string(&fake_entry).unwrap();
+        fs::write(&trust_file, content).unwrap();
+
+        // Should not be trusted for temp_dir1 anymore (repo_root mismatch)
+        assert!(!is_trusted(temp_dir1.path(), &hooks).unwrap());
+
+        // Cleanup
+        untrust(temp_dir1.path(), &hooks).unwrap();
+    }
+
+    #[test]
+    fn test_is_trusted_corrupted_trust_file() {
+        use std::fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let hooks = Hooks {
+            pre_add: vec![HookEntry {
+                command: "echo 'test'".to_string(),
+                description: None,
+            }],
+            ..Default::default()
+        };
+
+        // Trust the hooks
+        trust(temp_dir.path(), &hooks).unwrap();
+        assert!(is_trusted(temp_dir.path(), &hooks).unwrap());
+
+        // Corrupt the trust file
+        let hash = compute_hash(temp_dir.path(), &hooks).unwrap();
+        let trust_file = trust_dir().unwrap().join(format!("{}.toml", hash));
+        fs::write(&trust_file, "invalid toml content {{{").unwrap();
+
+        // Should return an error
+        let result = is_trusted(temp_dir.path(), &hooks);
+        assert!(result.is_err());
+
+        // Cleanup (remove corrupted file)
+        fs::remove_file(&trust_file).ok();
     }
 }
