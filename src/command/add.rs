@@ -2,9 +2,11 @@ use crate::cli::AddArgs;
 use crate::config::{self, Config, Link, OnConflict};
 use crate::error::{Error, Result};
 use crate::git;
+use crate::hook::{self, HookEnv};
 use crate::operation::{self, ConflictAction, check_conflict, create_directory, resolve_conflict};
 use crate::output::Output;
 use crate::prompt::{self, ConflictChoice};
+use crate::trust;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -21,8 +23,39 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
     // Get repository root
     let repo_root = git::repo_root()?;
 
-    // Load config (optional - if not found, just run git worktree add)
+    // Initial config load for trust check
+    let initial_config = config::load(&repo_root)?.unwrap_or_default();
+
+    // Trust check for hooks (before interactive mode)
+    if initial_config.hooks.has_hooks()
+        && !args.no_setup
+        && !trust::is_trusted(&repo_root, &initial_config.hooks)?
+    {
+        // Display hooks that need trust
+        hook::display_hooks_for_review(&initial_config.hooks);
+
+        eprintln!("\nError: Hooks are not trusted.");
+        eprintln!("The .gwtx.toml file contains hooks that can execute arbitrary commands.");
+        eprintln!("For security, you must explicitly review and trust these hooks.");
+        eprintln!();
+        eprintln!("To trust these hooks, run:");
+        eprintln!("  gwtx trust           # Trust the hooks above");
+        eprintln!();
+        eprintln!("Or skip hooks entirely:");
+        eprintln!("  gwtx add --no-setup <path>");
+        return Err(Error::HooksNotTrusted);
+    }
+
+    // TOCTOU protection: reload config immediately before use
+    // This prevents attacks where .gwtx.toml is modified between trust check and execution
     let config = config::load(&repo_root)?.unwrap_or_default();
+    if config.hooks.has_hooks() && !args.no_setup && !trust::is_trusted(&repo_root, &config.hooks)?
+    {
+        eprintln!("\nError: .gwtx.toml was modified after trust check.");
+        eprintln!("For security, hooks must be re-trusted after any changes.");
+        eprintln!("Run: gwtx trust");
+        return Err(Error::HooksNotTrusted);
+    }
 
     // Handle interactive mode
     let worktree_path = if args.interactive {
@@ -72,6 +105,41 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
         }
     }
 
+    // Create hook environment
+    let worktree_name = worktree_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Get branch name and strip refs/heads/ prefix if present
+    let branch = args
+        .new_branch
+        .clone()
+        .or(args.commitish.clone())
+        .or(args.new_branch_force.clone())
+        .map(|b| b.strip_prefix("refs/heads/").unwrap_or(&b).to_string());
+
+    let hook_env = HookEnv {
+        worktree_path: worktree_path.to_string_lossy().to_string(),
+        worktree_name,
+        branch,
+        repo_root: repo_root.to_string_lossy().to_string(),
+    };
+
+    // Run pre_add hooks
+    if !config.hooks.pre_add.is_empty() {
+        if args.dry_run {
+            if !args.quiet {
+                for cmd in &config.hooks.pre_add {
+                    output.dry_run(&format!("Would run pre_add hook: {}", cmd));
+                }
+            }
+        } else {
+            hook::run_pre_add(&config.hooks, &hook_env, &repo_root, args.quiet)?;
+        }
+    }
+
     // Run git worktree add
     if !args.dry_run {
         git::worktree_add(&args, &worktree_path)?;
@@ -90,6 +158,22 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
             let _ = git::worktree_remove(&worktree_path, true);
         }
         return Err(e);
+    }
+
+    // Run post_add hooks
+    if !config.hooks.post_add.is_empty() {
+        if args.dry_run {
+            if !args.quiet {
+                for cmd in &config.hooks.post_add {
+                    output.dry_run(&format!("Would run post_add hook: {}", cmd));
+                }
+            }
+        } else if let Err(e) =
+            hook::run_post_add(&config.hooks, &hook_env, &worktree_path, args.quiet)
+        {
+            eprintln!("Warning: post_add hook failed: {}", e);
+            eprintln!("Worktree was created but post-setup may be incomplete.");
+        }
     }
 
     output.success(&format!("Worktree created: {}", worktree_path.display()));

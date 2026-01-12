@@ -36,7 +36,13 @@ EXAMPLES:
         Select worktrees to remove interactively
 
     gwtx remove --dry-run ../test
-        Preview what would be removed without executing")]
+        Preview what would be removed without executing
+
+    gwtx trust
+        Trust hooks in .gwtx.toml (required for hook execution)
+
+    gwtx untrust --list
+        List all trusted repositories")]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -53,6 +59,12 @@ pub(crate) enum Command {
 
     /// Manage .gwtx.toml configuration
     Config(ConfigArgs),
+
+    /// Trust hooks in .gwtx.toml for the current repository
+    Trust(TrustArgs),
+
+    /// Revoke trust for hooks in .gwtx.toml
+    Untrust(UntrustArgs),
 
     /// Generate shell completion script
     Completions {
@@ -96,6 +108,12 @@ CONFIG FORMAT:
     on_conflict = \"backup\"    # Optional, overrides global
     description = \"...\"       # Optional
 
+    [hooks]
+    pre_add = [\"echo 'Setting up {{worktree_name}}'\"]
+    post_add = [\"cd {{worktree_path}} && npm install\"]
+    pre_remove = [\"echo 'Cleaning up {{worktree_name}}'\"]
+    post_remove = [\"./scripts/cleanup.sh\"]
+
 CONFLICT MODES:
     abort      Stop immediately when a conflict is found
     skip       Skip the conflicting file and continue
@@ -111,7 +129,25 @@ GLOB PATTERNS:
         source = \"file[0-9].txt\"    Match character ranges
 
     With skip_tracked = true, only git-ignored files are linked, while
-    git-tracked files (like .gitkeep) are skipped. This keeps git status clean.")]
+    git-tracked files (like .gitkeep) are skipped. This keeps git status clean.
+
+HOOKS:
+    Hooks run custom commands before/after worktree operations.
+    Require explicit trust via 'gwtx trust' before execution.
+
+    Execution order (gwtx add):
+        1. pre_add (repo_root) → 2. git worktree add →
+        3. mkdir/link/copy → 4. post_add (worktree_path)
+
+    Execution order (gwtx remove):
+        1. pre_remove (worktree_path) → 2. git worktree remove →
+        3. post_remove (repo_root)
+
+    Template variables (automatically shell-escaped):
+        {{worktree_path}}    Full path to the worktree
+        {{worktree_name}}    Worktree directory name
+        {{branch}}           Branch name
+        {{repo_root}}        Repository root path")]
 pub(crate) struct ConfigArgs {
     #[command(subcommand)]
     pub command: Option<ConfigCommand>,
@@ -253,6 +289,72 @@ pub(crate) struct RemoveArgs {
     /// Suppress output
     #[arg(short, long, help_heading = "Shared Options")]
     pub quiet: bool,
+}
+
+/// Arguments for the `trust` subcommand.
+#[derive(Parser, Debug)]
+#[command(after_help = "\
+SECURITY:
+    Hooks allow running custom commands before/after worktree operations.
+    For security, hooks require explicit trust before execution.
+
+    Trust is stored in: ~/.local/share/gwtx/trusted/
+    Each repository's hooks are identified by a SHA256 hash.
+
+    If hooks are modified in .gwtx.toml, you must re-trust them.
+
+HOOKS:
+    pre_add      Run before worktree creation (in repo_root)
+    post_add     Run after worktree creation (in worktree_path)
+    pre_remove   Run before worktree removal (in worktree_path)
+    post_remove  Run after worktree removal (in repo_root)
+
+    Execution order (gwtx add):
+      1. pre_add → 2. git worktree add → 3. mkdir/link/copy → 4. post_add
+
+    Execution order (gwtx remove):
+      1. pre_remove → 2. git worktree remove → 3. post_remove
+
+    Hooks can use template variables (see gwtx config for details):
+    {{worktree_path}}, {{worktree_name}}, {{branch}}, {{repo_root}}
+
+EXAMPLES:
+    gwtx trust
+        Trust hooks in .gwtx.toml for the current repository
+
+    gwtx trust --show
+        Show hooks and trust status without trusting
+
+    gwtx trust /path/to/repo
+        Trust hooks for a specific repository")]
+pub(crate) struct TrustArgs {
+    /// Path to repository (defaults to current directory)
+    pub path: Option<PathBuf>,
+
+    /// Show trusted hooks without trusting
+    #[arg(long)]
+    pub show: bool,
+}
+
+/// Arguments for the `untrust` subcommand.
+#[derive(Parser, Debug)]
+#[command(after_help = "\
+EXAMPLES:
+    gwtx untrust
+        Revoke trust for hooks in the current repository
+
+    gwtx untrust --list
+        List all trusted repositories
+
+    gwtx untrust /path/to/repo
+        Revoke trust for a specific repository")]
+pub(crate) struct UntrustArgs {
+    /// Path to repository (defaults to current directory)
+    pub path: Option<PathBuf>,
+
+    /// List all trusted repositories
+    #[arg(long)]
+    pub list: bool,
 }
 
 /// Conflict resolution mode from CLI.

@@ -80,6 +80,26 @@ gwtx config
 gwtx config validate
 ```
 
+### Hooks (Trust Required)
+
+Hooks allow you to run custom commands before/after worktree operations:
+
+```bash
+# Review and trust hooks in .gwtx.toml
+gwtx trust
+
+# Show hooks without trusting
+gwtx trust --show
+
+# Revoke trust
+gwtx untrust
+
+# List all trusted repositories
+gwtx untrust --list
+```
+
+**Security:** For security, hooks require explicit trust via `gwtx trust` before execution. See [Hooks Configuration](#hooks) below.
+
 ## Configuration
 
 Create `.gwtx.toml` in your repository root (see [`.gwtx.example.toml`](.gwtx.example.toml)):
@@ -104,6 +124,10 @@ description = "direnv configuration"
 source = ".env.example"
 target = ".env"
 description = "Environment file"
+
+[hooks]
+pre_add = ["echo 'Setting up {{worktree_name}}'"]
+post_add = ["cd {{worktree_path}} && npm install"]
 ```
 
 For all available options, see [`.gwtx.example.toml`](.gwtx.example.toml) or run `gwtx config`.
@@ -146,6 +170,82 @@ Using `source = "fixtures/*"` with `skip_tracked = true` will:
 - Skip `.gitkeep` (leaving the git-tracked file intact)
 - Keep `git status` clean in the worktree
 
+### Hooks
+
+Execute custom commands before and after worktree operations. **Hooks require explicit trust** via `gwtx trust` for security.
+
+```toml
+[hooks]
+pre_add = [
+    "echo 'Preparing worktree setup...'",
+    "./scripts/pre-setup.sh"
+]
+post_add = [
+    "cd {{worktree_path}} && npm install",
+    "mise install",
+    "direnv allow"
+]
+pre_remove = [
+    "echo 'Cleaning up {{worktree_name}}...'"
+]
+post_remove = [
+    "./scripts/cleanup.sh"
+]
+```
+
+**Execution Order:**
+
+Hooks execute at specific points during worktree operations:
+
+*gwtx add:*
+1. `pre_add` hooks (run in repo_root, before worktree creation)
+2. `git worktree add` (create worktree directory)
+3. Setup operations (`mkdir`, `link`, `copy` from .gwtx.toml)
+4. `post_add` hooks (run in worktree_path, after all setup completes)
+
+*gwtx remove:*
+1. `pre_remove` hooks (run in worktree_path, before removal)
+2. `git worktree remove` (delete worktree directory)
+3. `post_remove` hooks (run in repo_root, after removal)
+
+**Failure Handling:**
+- `pre_add` / `pre_remove` failure: Aborts the operation
+- Setup operations (`mkdir`/`link`/`copy`) failure: Rolls back worktree creation
+- `post_add` / `post_remove` failure: Displays warning, operation continues
+
+**Template Variables:**
+
+Hooks support template variables for safe value substitution:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{worktree_path}}` | Full path to the worktree | `/path/to/worktrees/feature-foo` |
+| `{{worktree_name}}` | Worktree directory name | `feature-foo` |
+| `{{branch}}` | Branch name | `feature/foo` |
+| `{{repo_root}}` | Repository root path | `/path/to/repo` |
+
+**Security:**
+
+- Template variables are automatically shell-escaped to prevent command injection
+- Hooks must be explicitly trusted via `gwtx trust` before execution
+- Changes to hooks require re-trusting
+
+**Example:**
+
+```bash
+# First time using hooks
+gwtx add ../feature
+# → Shows warning and requires `gwtx trust`
+
+# Review and trust hooks
+gwtx trust
+# → Shows all hooks and prompts for confirmation
+
+# Now hooks run automatically
+gwtx add ../feature
+# → Hooks execute before/after worktree creation
+```
+
 ## Features
 
 ### Operations
@@ -155,6 +255,7 @@ Using `source = "fixtures/*"` with `skip_tracked = true` will:
 | `[[mkdir]]` | Create directories |
 | `[[link]]` | Create symbolic links |
 | `[[copy]]` | Copy files or directories |
+| `[hooks]` | Run custom commands (requires trust) |
 
 ### Conflict Handling
 
@@ -274,7 +375,16 @@ gwtx man | man -l -
 
 ## Platform Support
 
+### Hooks
+
+**Hooks are currently supported on Unix-like systems (Linux, macOS) only.**
+
+Windows support is not yet available. For Windows users:
+- Use Git Bash or WSL for hooks functionality
+- Or use `--no-setup` flag to skip hooks
+
 ### Windows
+
 On Windows, creating symbolic links requires one of the following:
 - **Windows 11**: No special permissions required
 - **Windows 10 Creators Update (1703) or later**: Enable [Developer Mode](https://blogs.windows.com/windowsdeveloper/2016/12/02/symlinks-windows-10/) in Settings > Update & Security > For Developers
@@ -291,7 +401,6 @@ For more information, see:
 Planned features for future releases:
 
 - `gwtx config init` - Generate `.gwtx.toml` template
-- Hooks - Run custom scripts (pre-add, post-add)
 
 ## License
 

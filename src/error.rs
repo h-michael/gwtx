@@ -74,6 +74,41 @@ pub(crate) enum Error {
     )]
     WindowsSymlinkPermission,
 
+    #[error("Hooks are not trusted. Run `gwtx trust` to approve hooks, or use --no-setup to skip.")]
+    HooksNotTrusted,
+
+    #[error("Hook execution failed: {command}\n  {cause}")]
+    HookExecutionFailed { command: String, cause: String },
+
+    #[error("Hook failed: {command}\n  Exit code: {exit_code:?}\n  {stderr}")]
+    HookFailed {
+        command: String,
+        exit_code: Option<i32>,
+        stderr: String,
+    },
+
+    #[error("Trust storage directory not found")]
+    TrustStorageNotFound,
+
+    #[error("Trust file corrupted: {message}")]
+    TrustFileCorrupted { message: String },
+
+    #[error("Trust file serialization failed: {message}")]
+    TrustFileSerialization { message: String },
+
+    #[error("Config file not found: {path}")]
+    ConfigNotFound { path: PathBuf },
+
+    #[cfg(windows)]
+    #[error(
+        "Hooks are not supported on Windows yet.\n\
+        \n\
+        For Windows users:\n\
+        - Use Git Bash or WSL for hooks functionality\n\
+        - Or use --no-setup to skip hooks"
+    )]
+    WindowsHooksNotSupported,
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

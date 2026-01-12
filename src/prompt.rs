@@ -345,3 +345,20 @@ pub(crate) fn prompt_remove_confirmation(warnings: &[SafetyWarning]) -> Result<b
         .prompt()
         .map_err(convert_inquire_error)
 }
+
+/// Prompt user to trust hooks
+pub(crate) fn prompt_trust_hooks(repo_root: &Path) -> Result<bool> {
+    use inquire::Confirm;
+
+    if !is_interactive() {
+        return Err(Error::NonInteractive);
+    }
+
+    Confirm::new(&format!("Trust these hooks for {}?", repo_root.display()))
+        .with_default(false)
+        .with_help_message(
+            "Once trusted, hooks will run automatically on future `gwtx add` commands",
+        )
+        .prompt()
+        .map_err(convert_inquire_error)
+}

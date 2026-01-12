@@ -3,9 +3,11 @@ mod command;
 mod config;
 mod error;
 mod git;
+mod hook;
 mod operation;
 mod output;
 mod prompt;
+mod trust;
 
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,6 +32,8 @@ fn main() -> ExitCode {
         cli::Command::Add(add_args) => command::add(add_args),
         cli::Command::Remove(remove_args) => command::remove(remove_args),
         cli::Command::Config(config_args) => command::config(config_args.command),
+        cli::Command::Trust(trust_args) => command::trust(trust_args),
+        cli::Command::Untrust(untrust_args) => command::untrust(untrust_args),
         cli::Command::Completions { shell } => command::completions(shell),
         cli::Command::Man => command::man(),
     };

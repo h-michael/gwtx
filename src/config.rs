@@ -36,6 +36,8 @@ struct RawConfig {
     #[serde(default)]
     options: RawOptions,
     #[serde(default)]
+    hooks: RawHooks,
+    #[serde(default)]
     mkdir: Vec<RawMkdir>,
     #[serde(default)]
     link: Vec<RawLink>,
@@ -46,6 +48,18 @@ struct RawConfig {
 #[derive(Debug, Deserialize, Default)]
 struct RawOptions {
     on_conflict: Option<OnConflict>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct RawHooks {
+    #[serde(default)]
+    pre_add: Vec<String>,
+    #[serde(default)]
+    post_add: Vec<String>,
+    #[serde(default)]
+    pre_remove: Vec<String>,
+    #[serde(default)]
+    post_remove: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -81,6 +95,7 @@ struct RawCopy {
 #[derive(Debug, Default)]
 pub(crate) struct Config {
     pub options: Options,
+    pub hooks: Hooks,
     pub mkdir: Vec<Mkdir>,
     pub link: Vec<Link>,
     pub copy: Vec<Copy>,
@@ -207,6 +222,12 @@ impl TryFrom<RawConfig> for Config {
             options: Options {
                 on_conflict: raw.options.on_conflict,
             },
+            hooks: Hooks {
+                pre_add: raw.hooks.pre_add,
+                post_add: raw.hooks.post_add,
+                pre_remove: raw.hooks.pre_remove,
+                post_remove: raw.hooks.post_remove,
+            },
             mkdir,
             link,
             copy,
@@ -245,6 +266,25 @@ fn validate_path(path: &Path) -> Option<String> {
 #[derive(Debug, Default)]
 pub(crate) struct Options {
     pub on_conflict: Option<OnConflict>,
+}
+
+/// Hook commands configuration.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct Hooks {
+    pub pre_add: Vec<String>,
+    pub post_add: Vec<String>,
+    pub pre_remove: Vec<String>,
+    pub post_remove: Vec<String>,
+}
+
+impl Hooks {
+    /// Check if any hooks are defined.
+    pub fn has_hooks(&self) -> bool {
+        !self.pre_add.is_empty()
+            || !self.post_add.is_empty()
+            || !self.pre_remove.is_empty()
+            || !self.post_remove.is_empty()
+    }
 }
 
 /// Directory creation configuration entry.
@@ -471,5 +511,103 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("copy[0]: source is required"));
         assert!(msg.contains("copy[1]: source is required"));
+    }
+
+    #[test]
+    fn test_hooks_has_hooks_empty() {
+        let hooks = Hooks::default();
+        assert!(!hooks.has_hooks());
+    }
+
+    #[test]
+    fn test_hooks_has_hooks_with_pre_add() {
+        let hooks = Hooks {
+            pre_add: vec!["echo test".to_string()],
+            ..Default::default()
+        };
+        assert!(hooks.has_hooks());
+    }
+
+    #[test]
+    fn test_hooks_has_hooks_with_post_add() {
+        let hooks = Hooks {
+            post_add: vec!["npm install".to_string()],
+            ..Default::default()
+        };
+        assert!(hooks.has_hooks());
+    }
+
+    #[test]
+    fn test_hooks_has_hooks_with_pre_remove() {
+        let hooks = Hooks {
+            pre_remove: vec!["echo cleanup".to_string()],
+            ..Default::default()
+        };
+        assert!(hooks.has_hooks());
+    }
+
+    #[test]
+    fn test_hooks_has_hooks_with_post_remove() {
+        let hooks = Hooks {
+            post_remove: vec!["./scripts/cleanup.sh".to_string()],
+            ..Default::default()
+        };
+        assert!(hooks.has_hooks());
+    }
+
+    #[test]
+    fn test_parse_config_with_hooks() {
+        let toml = r#"
+            [hooks]
+            pre_add = ["echo 'pre add'"]
+            post_add = ["npm install", "mise install"]
+            pre_remove = ["echo 'pre remove'"]
+            post_remove = ["./scripts/cleanup.sh"]
+        "#;
+
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+
+        assert_eq!(config.hooks.pre_add.len(), 1);
+        assert_eq!(config.hooks.pre_add[0], "echo 'pre add'");
+
+        assert_eq!(config.hooks.post_add.len(), 2);
+        assert_eq!(config.hooks.post_add[0], "npm install");
+        assert_eq!(config.hooks.post_add[1], "mise install");
+
+        assert_eq!(config.hooks.pre_remove.len(), 1);
+        assert_eq!(config.hooks.pre_remove[0], "echo 'pre remove'");
+
+        assert_eq!(config.hooks.post_remove.len(), 1);
+        assert_eq!(config.hooks.post_remove[0], "./scripts/cleanup.sh");
+    }
+
+    #[test]
+    fn test_parse_config_with_empty_hooks() {
+        let toml = r#"
+            [hooks]
+        "#;
+
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+
+        assert!(!config.hooks.has_hooks());
+        assert!(config.hooks.pre_add.is_empty());
+        assert!(config.hooks.post_add.is_empty());
+        assert!(config.hooks.pre_remove.is_empty());
+        assert!(config.hooks.post_remove.is_empty());
+    }
+
+    #[test]
+    fn test_parse_config_without_hooks() {
+        let toml = r#"
+            [[mkdir]]
+            path = "build"
+        "#;
+
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+
+        assert!(!config.hooks.has_hooks());
     }
 }
