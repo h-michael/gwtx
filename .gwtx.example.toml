@@ -37,6 +37,8 @@
 
 # Hooks: Execute commands before/after worktree operations
 # SECURITY: Hooks require explicit trust via `gwtx trust` before execution
+# PLATFORM: Hooks are currently supported on Unix-like systems (Linux, macOS) only
+#           Windows users: Use Git Bash/WSL or `--no-setup` flag to skip hooks
 #
 # [[hooks.pre_add]]
 # command = "echo 'Preparing worktree setup...'"

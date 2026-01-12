@@ -40,6 +40,12 @@ impl ColorConfig {
 }
 
 /// Centralized color scheme for consistent CLI output.
+///
+/// This struct provides semantic color methods for all CLI output.
+/// Some methods are currently unused but are kept for:
+/// - Future features (new commands, improved output)
+/// - API stability (avoiding breaking changes when features are added)
+/// - Comprehensive color palette (maintaining consistent theming)
 pub(crate) struct ColorScheme;
 
 #[allow(dead_code)]
