@@ -101,4 +101,11 @@ impl Output {
             println!("Warning: {} - {}", path.display(), message);
         }
     }
+
+    /// Print list item (suppressed in quiet mode).
+    pub fn list(&self, line: &str) {
+        if !self.quiet {
+            println!("{line}");
+        }
+    }
 }

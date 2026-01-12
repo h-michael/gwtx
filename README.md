@@ -44,6 +44,21 @@ gwtx add --interactive
 gwtx add --dry-run ../test
 ```
 
+### Listing Worktrees
+
+```bash
+# List all worktrees with detailed information (branch, commit hash, status)
+gwtx list
+gwtx ls  # Short alias
+
+# Show header row with column names
+gwtx list --header
+
+# List only worktree paths (useful for scripting)
+gwtx list --path-only
+gwtx ls -p
+```
+
 ### Removing Worktrees
 
 ```bash
