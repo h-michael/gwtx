@@ -57,6 +57,10 @@ pub(crate) enum Command {
     /// Remove worktrees with safety checks
     Remove(RemoveArgs),
 
+    /// List all worktrees
+    #[command(visible_alias = "ls")]
+    List(ListArgs),
+
     /// Manage .gwtx.toml configuration
     Config(ConfigArgs),
 
@@ -289,6 +293,31 @@ pub(crate) struct RemoveArgs {
     /// Suppress output
     #[arg(short, long, help_heading = "Shared Options")]
     pub quiet: bool,
+}
+
+/// Arguments for the `list` subcommand.
+#[derive(Parser, Debug)]
+#[command(after_help = "\
+EXAMPLES:
+    gwtx list
+        List all worktrees with detailed information (branch, commit, status)
+
+    gwtx list --header
+        Show header row with column names
+
+    gwtx list --path-only
+        List only worktree paths (useful for scripting)
+
+    gwtx ls -p --header
+        Combine options using the short alias")]
+pub(crate) struct ListArgs {
+    /// Show only worktree paths
+    #[arg(short, long)]
+    pub path_only: bool,
+
+    /// Show header row
+    #[arg(long)]
+    pub header: bool,
 }
 
 /// Arguments for the `trust` subcommand.

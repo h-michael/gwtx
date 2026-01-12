@@ -31,6 +31,7 @@ fn main() -> ExitCode {
     let result = match args.command {
         cli::Command::Add(add_args) => command::add(add_args),
         cli::Command::Remove(remove_args) => command::remove(remove_args),
+        cli::Command::List(list_args) => command::list(list_args),
         cli::Command::Config(config_args) => command::config(config_args.command),
         cli::Command::Trust(trust_args) => command::trust(trust_args),
         cli::Command::Untrust(untrust_args) => command::untrust(untrust_args),
