@@ -357,7 +357,7 @@ pub(crate) fn prompt_trust_hooks(repo_root: &Path) -> Result<bool> {
     Confirm::new(&format!("Trust these hooks for {}?", repo_root.display()))
         .with_default(false)
         .with_help_message(
-            "Once trusted, hooks will run automatically on future `gwtx add` commands",
+            "Once trusted, hooks will run automatically on future `gwtx add/remove` commands",
         )
         .prompt()
         .map_err(convert_inquire_error)

@@ -37,22 +37,32 @@
 
 # Hooks: Execute commands before/after worktree operations
 # SECURITY: Hooks require explicit trust via `gwtx trust` before execution
-# [hooks]
-# pre_add = [
-#     "echo 'Preparing worktree setup...'",
-#     "./scripts/pre-setup.sh"
-# ]
-# post_add = [
-#     "mise install",                    # Install tools via mise
-#     "direnv allow",                    # Trust direnv configuration
-#     "cd {{worktree_path}} && npm install"  # Install dependencies
-# ]
-# pre_remove = [
-#     "echo 'Cleaning up {{worktree_name}}...'"
-# ]
-# post_remove = [
-#     "./scripts/cleanup.sh"
-# ]
+#
+# [[hooks.pre_add]]
+# command = "echo 'Preparing worktree setup...'"
+#
+# [[hooks.pre_add]]
+# command = "./scripts/pre-setup.sh"
+# description = "Run pre-setup script"
+#
+# [[hooks.post_add]]
+# command = "mise install"
+# description = "Install tools via mise"
+#
+# [[hooks.post_add]]
+# command = "direnv allow"
+# description = "Trust direnv configuration"
+#
+# [[hooks.post_add]]
+# command = "cd {{worktree_path}} && npm install"
+# description = "Install dependencies"
+#
+# [[hooks.pre_remove]]
+# command = "echo 'Cleaning up {{worktree_name}}...'"
+#
+# [[hooks.post_remove]]
+# command = "./scripts/cleanup.sh"
+# description = "Run cleanup script"
 #
 # Template variables (safe and recommended):
 #   {{worktree_path}}   - Full path to the worktree (e.g., /path/to/worktrees/feature-foo)
@@ -60,11 +70,4 @@
 #   {{branch}}          - Branch name (e.g., feature/foo)
 #   {{repo_root}}       - Repository root path
 #
-# Variables are automatically escaped for shell safety.
-#
-# Example usage:
-#   post_add = [
-#       "echo 'Setting up {{worktree_name}} on branch {{branch}}'",
-#       "cd {{worktree_path}} && npm install",
-#       "./scripts/post-setup.sh"
-#   ]
+# Variables are automatically escaped for shell safety

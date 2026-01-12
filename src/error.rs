@@ -74,13 +74,13 @@ pub(crate) enum Error {
     )]
     WindowsSymlinkPermission,
 
-    #[error("Hooks are not trusted. Run `gwtx trust` to approve hooks, or use --no-setup to skip.")]
+    #[error("")]
     HooksNotTrusted,
 
     #[error("Hook execution failed: {command}\n  {cause}")]
     HookExecutionFailed { command: String, cause: String },
 
-    #[error("Hook failed: {command}\n  Exit code: {exit_code:?}\n  {stderr}")]
+    #[error("Hook failed: {command}")]
     HookFailed {
         command: String,
         exit_code: Option<i32>,

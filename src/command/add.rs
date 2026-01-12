@@ -1,4 +1,5 @@
 use crate::cli::AddArgs;
+use crate::color::ColorConfig;
 use crate::config::{self, Config, Link, OnConflict};
 use crate::error::{Error, Result};
 use crate::git;
@@ -12,8 +13,8 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Execute the `add` subcommand.
-pub(crate) fn run(mut args: AddArgs) -> Result<()> {
-    let output = Output::new(args.quiet);
+pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
+    let output = Output::new(args.quiet, color);
 
     // Check if we're in a git repository
     if !git::is_inside_repo() {
@@ -34,14 +35,15 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
         // Display hooks that need trust
         hook::display_hooks_for_review(&initial_config.hooks);
 
-        eprintln!("\nError: Hooks are not trusted.");
+        eprintln!();
+        eprintln!("Error: Hooks are not trusted.");
         eprintln!("The .gwtx.toml file contains hooks that can execute arbitrary commands.");
         eprintln!("For security, you must explicitly review and trust these hooks.");
         eprintln!();
         eprintln!("To trust these hooks, run:");
-        eprintln!("  gwtx trust           # Trust the hooks above");
+        eprintln!("  gwtx trust");
         eprintln!();
-        eprintln!("Or skip hooks entirely:");
+        eprintln!("Or skip hooks:");
         eprintln!("  gwtx add --no-setup <path>");
         return Err(Error::HooksNotTrusted);
     }
@@ -131,12 +133,13 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
     if !config.hooks.pre_add.is_empty() {
         if args.dry_run {
             if !args.quiet {
-                for cmd in &config.hooks.pre_add {
-                    output.dry_run(&format!("Would run pre_add hook: {}", cmd));
+                for entry in &config.hooks.pre_add {
+                    let display = entry.description.as_deref().unwrap_or(&entry.command);
+                    output.dry_run(&format!("Would run pre_add hook: {}", display));
                 }
             }
         } else {
-            hook::run_pre_add(&config.hooks, &hook_env, &repo_root, args.quiet)?;
+            hook::run_pre_add(&config.hooks, &hook_env, &repo_root, &output)?;
         }
     }
 
@@ -160,23 +163,74 @@ pub(crate) fn run(mut args: AddArgs) -> Result<()> {
         return Err(e);
     }
 
-    // Run post_add hooks
+    // Run post_add hooks and track failure
+    let mut post_add_failed = false;
+    let mut post_add_error: Option<(String, Option<String>, Option<i32>)> = None;
+
     if !config.hooks.post_add.is_empty() {
         if args.dry_run {
             if !args.quiet {
-                for cmd in &config.hooks.post_add {
-                    output.dry_run(&format!("Would run post_add hook: {}", cmd));
+                for entry in &config.hooks.post_add {
+                    let display = entry.description.as_deref().unwrap_or(&entry.command);
+                    output.dry_run(&format!("Would run post_add hook: {}", display));
                 }
             }
-        } else if let Err(e) =
-            hook::run_post_add(&config.hooks, &hook_env, &worktree_path, args.quiet)
+        } else if let Err(e) = hook::run_post_add(&config.hooks, &hook_env, &worktree_path, &output)
         {
-            eprintln!("Warning: post_add hook failed: {}", e);
-            eprintln!("Worktree was created but post-setup may be incomplete.");
+            post_add_failed = true;
+
+            // Extract error details
+            let (command, exit_code) = match &e {
+                Error::HookFailed {
+                    command, exit_code, ..
+                } => (command.clone(), *exit_code),
+                _ => (String::new(), None),
+            };
+
+            // Find the description for the failed command
+            let description = config
+                .hooks
+                .post_add
+                .iter()
+                .find(|entry| entry.command == command)
+                .and_then(|entry| entry.description.clone());
+
+            post_add_error = Some((command, description, exit_code));
+
+            output.hook_warning("post_add", &e.to_string(), exit_code);
+            output.hook_note("Worktree was created but post-setup may be incomplete.");
         }
     }
 
-    output.success(&format!("Worktree created: {}", worktree_path.display()));
+    // Display results summary
+    if !args.dry_run && !args.quiet {
+        if post_add_failed {
+            // Show detailed results when there's a failure
+            output.results_header();
+
+            if !config.hooks.pre_add.is_empty() {
+                output.results_item_success(&format!(
+                    "pre_add hooks ({} succeeded)",
+                    config.hooks.pre_add.len()
+                ));
+            }
+
+            output.results_item_success("Worktree created");
+            output.results_item_success("Setup operations completed");
+
+            output.results_item_failed(&format!(
+                "post_add hooks ({} failed)",
+                if post_add_error.is_some() { 1 } else { 0 }
+            ));
+
+            if let Some((command, description, exit_code)) = post_add_error {
+                output.results_failed_detail(description.as_deref(), &command, exit_code);
+            }
+        } else {
+            // All succeeded - simple message
+            output.results_success("Worktree created successfully");
+        }
+    }
 
     Ok(())
 }

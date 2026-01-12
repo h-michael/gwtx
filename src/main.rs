@@ -1,4 +1,5 @@
 mod cli;
+mod color;
 mod command;
 mod config;
 mod error;
@@ -27,11 +28,17 @@ fn main() -> ExitCode {
     setup_signal_handlers();
 
     let args = cli::parse();
+    let color_choice = if args.no_color {
+        clap::ColorChoice::Never
+    } else {
+        args.color
+    };
+    let color_config = color::ColorConfig::new(color_choice);
 
     let result = match args.command {
-        cli::Command::Add(add_args) => command::add(add_args),
-        cli::Command::Remove(remove_args) => command::remove(remove_args),
-        cli::Command::List(list_args) => command::list(list_args),
+        cli::Command::Add(add_args) => command::add(add_args, color_config),
+        cli::Command::Remove(remove_args) => command::remove(remove_args, color_config),
+        cli::Command::List(list_args) => command::list(list_args, color_config),
         cli::Command::Config(config_args) => command::config(config_args.command),
         cli::Command::Trust(trust_args) => command::trust(trust_args),
         cli::Command::Untrust(untrust_args) => command::untrust(untrust_args),
@@ -51,6 +58,10 @@ fn main() -> ExitCode {
         Err(error::Error::Aborted) => {
             // User-initiated cancellation (e.g., Escape key) - not an error
             ExitCode::SUCCESS
+        }
+        Err(error::Error::HooksNotTrusted) => {
+            // Detailed message already displayed by command
+            ExitCode::FAILURE
         }
         Err(e) => {
             eprintln!("Error: {e}");

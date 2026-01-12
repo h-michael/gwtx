@@ -59,6 +59,11 @@ gwtx list --path-only
 gwtx ls -p
 ```
 
+**Status Symbols:**
+- `*` = Uncommitted changes (modified, deleted, or untracked files)
+
+Note: Use `git status` in the worktree directory for detailed status information.
+
 ### Removing Worktrees
 
 ```bash
@@ -140,9 +145,12 @@ source = ".env.example"
 target = ".env"
 description = "Environment file"
 
-[hooks]
-pre_add = ["echo 'Setting up {{worktree_name}}'"]
-post_add = ["cd {{worktree_path}} && npm install"]
+[[hooks.pre_add]]
+command = "echo 'Setting up {{worktree_name}}'"
+
+[[hooks.post_add]]
+command = "npm install"
+description = "Install dependencies"
 ```
 
 For all available options, see [`.gwtx.example.toml`](.gwtx.example.toml) or run `gwtx config`.
@@ -190,23 +198,36 @@ Using `source = "fixtures/*"` with `skip_tracked = true` will:
 Execute custom commands before and after worktree operations. **Hooks require explicit trust** via `gwtx trust` for security.
 
 ```toml
-[hooks]
-pre_add = [
-    "echo 'Preparing worktree setup...'",
-    "./scripts/pre-setup.sh"
-]
-post_add = [
-    "cd {{worktree_path}} && npm install",
-    "mise install",
-    "direnv allow"
-]
-pre_remove = [
-    "echo 'Cleaning up {{worktree_name}}...'"
-]
-post_remove = [
-    "./scripts/cleanup.sh"
-]
+[[hooks.pre_add]]
+command = "echo 'Preparing worktree setup...'"
+
+[[hooks.pre_add]]
+command = "./scripts/pre-setup.sh"
+description = "Run pre-setup script"
+
+[[hooks.post_add]]
+command = "cd {{worktree_path}} && npm install"
+description = "Install dependencies"
+
+[[hooks.post_add]]
+command = "mise install"
+description = "Install mise tools"
+
+[[hooks.post_add]]
+command = "direnv allow"
+description = "Trust direnv configuration"
+
+[[hooks.pre_remove]]
+command = "echo 'Cleaning up {{worktree_name}}...'"
+
+[[hooks.post_remove]]
+command = "./scripts/cleanup.sh"
+description = "Run cleanup script"
 ```
+
+**Hook Format:**
+- `command` (required): Shell command to execute
+- `description` (optional): Human-readable description displayed during execution
 
 **Execution Order:**
 
@@ -270,7 +291,7 @@ gwtx add ../feature
 | `[[mkdir]]` | Create directories |
 | `[[link]]` | Create symbolic links |
 | `[[copy]]` | Copy files or directories |
-| `[hooks]` | Run custom commands (requires trust) |
+| `[[hooks.*]]` | Run custom commands (requires trust) |
 
 ### Conflict Handling
 

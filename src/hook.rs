@@ -1,6 +1,9 @@
+use crate::color::ColorScheme;
 use crate::config::Hooks;
 use crate::error::{Error, Result};
+use crate::output::Output;
 
+use std::io::IsTerminal;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -87,19 +90,18 @@ pub(crate) fn run_pre_add(
     hooks: &Hooks,
     env: &HookEnv,
     working_dir: &Path,
-    quiet: bool,
+    output: &Output,
 ) -> Result<()> {
-    for (i, cmd) in hooks.pre_add.iter().enumerate() {
-        if !quiet {
-            println!(
-                "Running pre_add hook [{}/{}]: {}",
-                i + 1,
-                hooks.pre_add.len(),
-                cmd
-            );
-        }
-
-        execute_hook(cmd, env, working_dir)?;
+    for (i, entry) in hooks.pre_add.iter().enumerate() {
+        output.hook_running(
+            "pre_add",
+            i + 1,
+            hooks.pre_add.len(),
+            &entry.command,
+            entry.description.as_deref(),
+        );
+        execute_hook(&entry.command, env, working_dir)?;
+        output.hook_separator();
     }
     Ok(())
 }
@@ -109,19 +111,18 @@ pub(crate) fn run_post_add(
     hooks: &Hooks,
     env: &HookEnv,
     working_dir: &Path,
-    quiet: bool,
+    output: &Output,
 ) -> Result<()> {
-    for (i, cmd) in hooks.post_add.iter().enumerate() {
-        if !quiet {
-            println!(
-                "Running post_add hook [{}/{}]: {}",
-                i + 1,
-                hooks.post_add.len(),
-                cmd
-            );
-        }
-
-        execute_hook(cmd, env, working_dir)?;
+    for (i, entry) in hooks.post_add.iter().enumerate() {
+        output.hook_running(
+            "post_add",
+            i + 1,
+            hooks.post_add.len(),
+            &entry.command,
+            entry.description.as_deref(),
+        );
+        execute_hook(&entry.command, env, working_dir)?;
+        output.hook_separator();
     }
     Ok(())
 }
@@ -131,19 +132,18 @@ pub(crate) fn run_pre_remove(
     hooks: &Hooks,
     env: &HookEnv,
     working_dir: &Path,
-    quiet: bool,
+    output: &Output,
 ) -> Result<()> {
-    for (i, cmd) in hooks.pre_remove.iter().enumerate() {
-        if !quiet {
-            println!(
-                "Running pre_remove hook [{}/{}]: {}",
-                i + 1,
-                hooks.pre_remove.len(),
-                cmd
-            );
-        }
-
-        execute_hook(cmd, env, working_dir)?;
+    for (i, entry) in hooks.pre_remove.iter().enumerate() {
+        output.hook_running(
+            "pre_remove",
+            i + 1,
+            hooks.pre_remove.len(),
+            &entry.command,
+            entry.description.as_deref(),
+        );
+        execute_hook(&entry.command, env, working_dir)?;
+        output.hook_separator();
     }
     Ok(())
 }
@@ -153,59 +153,158 @@ pub(crate) fn run_post_remove(
     hooks: &Hooks,
     env: &HookEnv,
     working_dir: &Path,
-    quiet: bool,
+    output: &Output,
 ) -> Result<()> {
-    for (i, cmd) in hooks.post_remove.iter().enumerate() {
-        if !quiet {
-            println!(
-                "Running post_remove hook [{}/{}]: {}",
-                i + 1,
-                hooks.post_remove.len(),
-                cmd
-            );
-        }
-
-        execute_hook(cmd, env, working_dir)?;
+    for (i, entry) in hooks.post_remove.iter().enumerate() {
+        output.hook_running(
+            "post_remove",
+            i + 1,
+            hooks.post_remove.len(),
+            &entry.command,
+            entry.description.as_deref(),
+        );
+        execute_hook(&entry.command, env, working_dir)?;
+        output.hook_separator();
     }
     Ok(())
 }
 
 /// Display hooks for user review before trusting
 pub(crate) fn display_hooks_for_review(hooks: &Hooks) {
-    eprintln!();
-    eprintln!("WARNING: Untrusted hooks detected in .gwtx.toml");
+    let use_color = std::io::stderr().is_terminal();
+
+    if use_color {
+        eprintln!(
+            "{}",
+            ColorScheme::warning("WARNING: Untrusted hooks detected in .gwtx.toml")
+        );
+    } else {
+        eprintln!("WARNING: Untrusted hooks detected in .gwtx.toml");
+    }
     eprintln!();
     eprintln!("Trusting will allow ALL hooks in this file to execute:");
 
     if !hooks.pre_add.is_empty() {
         eprintln!();
-        eprintln!("pre_add (before worktree creation):");
-        for cmd in &hooks.pre_add {
-            eprintln!("  $ {}", cmd);
+        if use_color {
+            eprintln!("{}", ColorScheme::hook_type("pre_add:"));
+        } else {
+            eprintln!("pre_add:");
+        }
+        for entry in &hooks.pre_add {
+            eprintln!("  {}", entry.command);
+            if let Some(desc) = &entry.description {
+                if use_color {
+                    eprintln!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::hook_description(desc)
+                    );
+                } else {
+                    eprintln!("  -> {}", desc);
+                }
+            } else if use_color {
+                eprintln!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::dimmed("no description")
+                );
+            } else {
+                eprintln!("  -> no description");
+            }
         }
     }
 
     if !hooks.post_add.is_empty() {
         eprintln!();
-        eprintln!("post_add (after worktree creation):");
-        for cmd in &hooks.post_add {
-            eprintln!("  $ {}", cmd);
+        if use_color {
+            eprintln!("{}", ColorScheme::hook_type("post_add:"));
+        } else {
+            eprintln!("post_add:");
+        }
+        for entry in &hooks.post_add {
+            eprintln!("  {}", entry.command);
+            if let Some(desc) = &entry.description {
+                if use_color {
+                    eprintln!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::hook_description(desc)
+                    );
+                } else {
+                    eprintln!("  -> {}", desc);
+                }
+            } else if use_color {
+                eprintln!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::dimmed("no description")
+                );
+            } else {
+                eprintln!("  -> no description");
+            }
         }
     }
 
     if !hooks.pre_remove.is_empty() {
         eprintln!();
-        eprintln!("pre_remove (before worktree removal):");
-        for cmd in &hooks.pre_remove {
-            eprintln!("  $ {}", cmd);
+        if use_color {
+            eprintln!("{}", ColorScheme::hook_type("pre_remove:"));
+        } else {
+            eprintln!("pre_remove:");
+        }
+        for entry in &hooks.pre_remove {
+            eprintln!("  {}", entry.command);
+            if let Some(desc) = &entry.description {
+                if use_color {
+                    eprintln!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::hook_description(desc)
+                    );
+                } else {
+                    eprintln!("  -> {}", desc);
+                }
+            } else if use_color {
+                eprintln!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::dimmed("no description")
+                );
+            } else {
+                eprintln!("  -> no description");
+            }
         }
     }
 
     if !hooks.post_remove.is_empty() {
         eprintln!();
-        eprintln!("post_remove (after worktree removal):");
-        for cmd in &hooks.post_remove {
-            eprintln!("  $ {}", cmd);
+        if use_color {
+            eprintln!("{}", ColorScheme::hook_type("post_remove:"));
+        } else {
+            eprintln!("post_remove:");
+        }
+        for entry in &hooks.post_remove {
+            eprintln!("  {}", entry.command);
+            if let Some(desc) = &entry.description {
+                if use_color {
+                    eprintln!(
+                        "  {} {}",
+                        ColorScheme::hook_arrow("->"),
+                        ColorScheme::hook_description(desc)
+                    );
+                } else {
+                    eprintln!("  -> {}", desc);
+                }
+            } else if use_color {
+                eprintln!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::dimmed("no description")
+                );
+            } else {
+                eprintln!("  -> no description");
+            }
         }
     }
 }
