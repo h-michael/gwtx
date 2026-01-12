@@ -2,7 +2,21 @@ use crate::error::{Error, Result};
 
 use std::path::Path;
 
+#[cfg(windows)]
+const ERROR_PRIVILEGE_NOT_HELD: i32 = 1314;
+
 /// Create a symlink at target pointing to source.
+///
+/// # Preconditions
+/// - `source` must exist
+/// - `target` must not exist (or conflict resolution should handle it)
+///
+/// # Platform-specific behavior
+/// - **Unix**: Uses `std::os::unix::fs::symlink`
+/// - **Windows**: Requires Developer Mode or Administrator privileges
+///   - Windows 11: No special permissions required
+///   - Windows 10 1703+: Developer Mode enabled
+///   - Older versions: Administrator privileges
 pub(crate) fn create_symlink(source: &Path, target: &Path) -> Result<()> {
     // Ensure parent directory exists
     if let Some(parent) = target.parent() {
@@ -30,7 +44,7 @@ pub(crate) fn create_symlink(source: &Path, target: &Path) -> Result<()> {
 
         result.map_err(|e| {
             // Check for permission error on Windows
-            if e.raw_os_error() == Some(1314) {
+            if e.raw_os_error() == Some(ERROR_PRIVILEGE_NOT_HELD) {
                 Error::WindowsSymlinkPermission
             } else {
                 Error::SymlinkFailed {

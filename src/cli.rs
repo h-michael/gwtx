@@ -173,6 +173,9 @@ HOOKS:
     Hooks run custom commands before/after worktree operations.
     Require explicit trust via 'gwtx trust' before execution.
 
+    Platform support: Unix-like systems (Linux, macOS) only.
+    Windows users: Use Git Bash/WSL or --no-setup flag.
+
     Format:
         [[hooks.pre_add]]
         command = \"...\"       # Required: shell command to execute
@@ -375,6 +378,9 @@ SECURITY:
     If hooks are modified in .gwtx.toml, you must re-trust them.
 
 HOOKS:
+    Platform support: Unix-like systems (Linux, macOS) only.
+    Windows users: Use Git Bash/WSL or --no-setup flag.
+
     pre_add      Run before worktree creation (in repo_root)
     post_add     Run after worktree creation (in worktree_path)
     pre_remove   Run before worktree removal (in worktree_path)

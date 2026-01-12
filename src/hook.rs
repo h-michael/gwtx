@@ -1,5 +1,5 @@
 use crate::color::ColorScheme;
-use crate::config::Hooks;
+use crate::config::{HookEntry, Hooks};
 use crate::error::{Error, Result};
 use crate::output::Output;
 
@@ -7,7 +7,10 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-/// Template variables for hooks
+/// Template variables for hooks.
+///
+/// Provides context information that can be used in hook commands.
+/// All variables are automatically shell-escaped when expanded.
 pub(crate) struct HookEnv {
     /// Worktree path
     pub worktree_path: String,
@@ -20,7 +23,15 @@ pub(crate) struct HookEnv {
 }
 
 impl HookEnv {
-    /// Expand template variables in a command string
+    /// Expand template variables in a command string.
+    ///
+    /// # Supported Variables
+    /// - `{{worktree_path}}`: Full path to the worktree
+    /// - `{{worktree_name}}`: Worktree directory name
+    /// - `{{branch}}`: Branch name (empty if detached or not available)
+    /// - `{{repo_root}}`: Repository root path
+    ///
+    /// All values are automatically shell-escaped to prevent command injection.
     fn expand_template(&self, cmd: &str) -> String {
         let mut result = cmd.to_string();
 
@@ -39,8 +50,18 @@ impl HookEnv {
     }
 }
 
-/// Escape a string for safe use in shell commands
-/// Uses POSIX sh single quote escaping
+/// Escape a string for safe use in shell commands.
+///
+/// Uses POSIX sh single quote escaping. This method wraps the entire
+/// string in single quotes and escapes any single quotes within the string.
+///
+/// # Safety
+/// This prevents command injection by ensuring special shell characters
+/// (like `$`, `` ` ``, `&`, `|`, etc.) are treated as literal text.
+///
+/// # Platform Support
+/// - **Unix/Linux**: Uses POSIX sh-compatible escaping
+/// - **Windows**: Hooks are not supported on Windows
 fn shell_escape(s: &str) -> String {
     // Use single quotes and escape any single quotes in the string
     // This works by: ending quote, escaped quote, start quote
@@ -169,6 +190,43 @@ pub(crate) fn run_post_remove(
     Ok(())
 }
 
+/// Display a list of hook entries with optional color formatting.
+fn display_hook_entries(entries: &[HookEntry], hook_type: &str, use_color: bool) {
+    if entries.is_empty() {
+        return;
+    }
+
+    eprintln!();
+    if use_color {
+        eprintln!("{}", ColorScheme::hook_type(&format!("{}:", hook_type)));
+    } else {
+        eprintln!("{}:", hook_type);
+    }
+
+    for entry in entries {
+        eprintln!("  {}", entry.command);
+        if let Some(desc) = &entry.description {
+            if use_color {
+                eprintln!(
+                    "  {} {}",
+                    ColorScheme::hook_arrow("->"),
+                    ColorScheme::hook_description(desc)
+                );
+            } else {
+                eprintln!("  -> {}", desc);
+            }
+        } else if use_color {
+            eprintln!(
+                "  {} {}",
+                ColorScheme::hook_arrow("->"),
+                ColorScheme::dimmed("no description")
+            );
+        } else {
+            eprintln!("  -> no description");
+        }
+    }
+}
+
 /// Display hooks for user review before trusting
 pub(crate) fn display_hooks_for_review(hooks: &Hooks) {
     let use_color = std::io::stderr().is_terminal();
@@ -184,129 +242,10 @@ pub(crate) fn display_hooks_for_review(hooks: &Hooks) {
     eprintln!();
     eprintln!("Trusting will allow ALL hooks in this file to execute:");
 
-    if !hooks.pre_add.is_empty() {
-        eprintln!();
-        if use_color {
-            eprintln!("{}", ColorScheme::hook_type("pre_add:"));
-        } else {
-            eprintln!("pre_add:");
-        }
-        for entry in &hooks.pre_add {
-            eprintln!("  {}", entry.command);
-            if let Some(desc) = &entry.description {
-                if use_color {
-                    eprintln!(
-                        "  {} {}",
-                        ColorScheme::hook_arrow("->"),
-                        ColorScheme::hook_description(desc)
-                    );
-                } else {
-                    eprintln!("  -> {}", desc);
-                }
-            } else if use_color {
-                eprintln!(
-                    "  {} {}",
-                    ColorScheme::hook_arrow("->"),
-                    ColorScheme::dimmed("no description")
-                );
-            } else {
-                eprintln!("  -> no description");
-            }
-        }
-    }
-
-    if !hooks.post_add.is_empty() {
-        eprintln!();
-        if use_color {
-            eprintln!("{}", ColorScheme::hook_type("post_add:"));
-        } else {
-            eprintln!("post_add:");
-        }
-        for entry in &hooks.post_add {
-            eprintln!("  {}", entry.command);
-            if let Some(desc) = &entry.description {
-                if use_color {
-                    eprintln!(
-                        "  {} {}",
-                        ColorScheme::hook_arrow("->"),
-                        ColorScheme::hook_description(desc)
-                    );
-                } else {
-                    eprintln!("  -> {}", desc);
-                }
-            } else if use_color {
-                eprintln!(
-                    "  {} {}",
-                    ColorScheme::hook_arrow("->"),
-                    ColorScheme::dimmed("no description")
-                );
-            } else {
-                eprintln!("  -> no description");
-            }
-        }
-    }
-
-    if !hooks.pre_remove.is_empty() {
-        eprintln!();
-        if use_color {
-            eprintln!("{}", ColorScheme::hook_type("pre_remove:"));
-        } else {
-            eprintln!("pre_remove:");
-        }
-        for entry in &hooks.pre_remove {
-            eprintln!("  {}", entry.command);
-            if let Some(desc) = &entry.description {
-                if use_color {
-                    eprintln!(
-                        "  {} {}",
-                        ColorScheme::hook_arrow("->"),
-                        ColorScheme::hook_description(desc)
-                    );
-                } else {
-                    eprintln!("  -> {}", desc);
-                }
-            } else if use_color {
-                eprintln!(
-                    "  {} {}",
-                    ColorScheme::hook_arrow("->"),
-                    ColorScheme::dimmed("no description")
-                );
-            } else {
-                eprintln!("  -> no description");
-            }
-        }
-    }
-
-    if !hooks.post_remove.is_empty() {
-        eprintln!();
-        if use_color {
-            eprintln!("{}", ColorScheme::hook_type("post_remove:"));
-        } else {
-            eprintln!("post_remove:");
-        }
-        for entry in &hooks.post_remove {
-            eprintln!("  {}", entry.command);
-            if let Some(desc) = &entry.description {
-                if use_color {
-                    eprintln!(
-                        "  {} {}",
-                        ColorScheme::hook_arrow("->"),
-                        ColorScheme::hook_description(desc)
-                    );
-                } else {
-                    eprintln!("  -> {}", desc);
-                }
-            } else if use_color {
-                eprintln!(
-                    "  {} {}",
-                    ColorScheme::hook_arrow("->"),
-                    ColorScheme::dimmed("no description")
-                );
-            } else {
-                eprintln!("  -> no description");
-            }
-        }
-    }
+    display_hook_entries(&hooks.pre_add, "pre_add", use_color);
+    display_hook_entries(&hooks.post_add, "post_add", use_color);
+    display_hook_entries(&hooks.pre_remove, "pre_remove", use_color);
+    display_hook_entries(&hooks.post_remove, "post_remove", use_color);
 }
 
 #[cfg(test)]

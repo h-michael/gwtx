@@ -11,7 +11,7 @@ pub(crate) enum Error {
     #[error("Invalid config:\n{message}")]
     ConfigValidation { message: String },
 
-    #[error("Not inside a git repository")]
+    #[error("Not inside a git repository. Run this command from within a git repository.")]
     NotInGitRepo,
 
     #[error("Path is required. Use -i for interactive mode or provide a path.")]

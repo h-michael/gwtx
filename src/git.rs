@@ -193,6 +193,7 @@ fn parse_worktree_list(bytes: &[u8]) -> Result<Vec<WorktreeInfo>> {
             if let Some(wt) = current.take() {
                 worktrees.push(wt);
             }
+            // Use empty string as fallback if prefix is missing (shouldn't happen in normal git output)
             let path = PathBuf::from(line.strip_prefix("worktree ").unwrap_or(""));
             current = Some(WorktreeInfo {
                 path,
