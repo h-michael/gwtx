@@ -74,6 +74,15 @@ pub(crate) fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
+/// Get the repository name (directory name of repo root).
+pub(crate) fn repo_name() -> Result<String> {
+    let root = repo_root()?;
+    root.file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string())
+        .ok_or(Error::NotInGitRepo)
+}
+
 /// Remove a worktree. Used for rollback on failure.
 pub(crate) fn worktree_remove(path: &std::path::Path, force: bool) -> Result<()> {
     let mut cmd = Command::new("git");

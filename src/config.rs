@@ -36,6 +36,8 @@ struct RawConfig {
     #[serde(default)]
     options: RawOptions,
     #[serde(default)]
+    worktree: RawWorktree,
+    #[serde(default)]
     hooks: RawHooks,
     #[serde(default)]
     mkdir: Vec<RawMkdir>,
@@ -48,6 +50,11 @@ struct RawConfig {
 #[derive(Debug, Deserialize, Default)]
 struct RawOptions {
     on_conflict: Option<OnConflict>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct RawWorktree {
+    path: Option<String>,
 }
 
 /// Hook entry with command and optional description.
@@ -103,6 +110,7 @@ struct RawCopy {
 #[derive(Debug, Default)]
 pub(crate) struct Config {
     pub options: Options,
+    pub worktree: Worktree,
     pub hooks: Hooks,
     pub mkdir: Vec<Mkdir>,
     pub link: Vec<Link>,
@@ -115,6 +123,9 @@ impl TryFrom<RawConfig> for Config {
     fn try_from(raw: RawConfig) -> Result<Self> {
         let mut errors = Vec::new();
         let mut targets = HashSet::new();
+
+        // No validation needed for worktree.path
+        // It can contain variables or not, both are valid
 
         // Validate and convert mkdir entries
         let mut mkdir = Vec::with_capacity(raw.mkdir.len());
@@ -230,6 +241,9 @@ impl TryFrom<RawConfig> for Config {
             options: Options {
                 on_conflict: raw.options.on_conflict,
             },
+            worktree: Worktree {
+                path: raw.worktree.path,
+            },
             hooks: Hooks {
                 pre_add: raw.hooks.pre_add,
                 post_add: raw.hooks.post_add,
@@ -274,6 +288,104 @@ fn validate_path(path: &Path) -> Option<String> {
 #[derive(Debug, Default)]
 pub(crate) struct Options {
     pub on_conflict: Option<OnConflict>,
+}
+
+/// Worktree path generation configuration.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Worktree {
+    pub path: Option<String>,
+}
+
+impl Worktree {
+    /// Generate suggested worktree path based on configuration.
+    /// Returns None if no worktree config is set.
+    pub fn generate_path(&self, branch: &str, repo_name: &str) -> Option<String> {
+        self.path.as_ref().map(|path_template| {
+            let expanded = expand_variables(path_template, branch, repo_name);
+            // If no variables were used, append branch at the end (backward compatibility)
+            if expanded == *path_template {
+                format!("{}{}", path_template, branch)
+            } else {
+                expanded
+            }
+        })
+    }
+}
+
+/// Expand variables in a string template.
+/// Supports {var} and {{var}} syntax with optional whitespace.
+/// Examples: {branch}, {{ branch }}, {{  branch  }}
+fn expand_variables(template: &str, branch: &str, repo_name: &str) -> String {
+    let mut result = String::with_capacity(template.len());
+    let mut chars = template.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '{' {
+            // Check if it's {{ (double brace)
+            let is_double = chars.peek() == Some(&'{');
+            if is_double {
+                chars.next(); // consume second {
+            }
+
+            // Collect variable name until closing brace(s)
+            let mut var_name = String::new();
+            let mut found_close = false;
+
+            while let Some(ch) = chars.next() {
+                if ch == '}' {
+                    if is_double {
+                        // For {{var}}, need to find second }
+                        if chars.peek() == Some(&'}') {
+                            chars.next(); // consume second }
+                            found_close = true;
+                            break;
+                        } else {
+                            var_name.push(ch);
+                        }
+                    } else {
+                        // For {var}, one } is enough
+                        found_close = true;
+                        break;
+                    }
+                } else {
+                    var_name.push(ch);
+                }
+            }
+
+            if found_close {
+                // Trim whitespace and replace variable
+                let trimmed = var_name.trim();
+                match trimmed {
+                    "branch" => result.push_str(branch),
+                    "repo_name" => result.push_str(repo_name),
+                    _ => {
+                        // Unknown variable, keep original
+                        if is_double {
+                            result.push_str("{{");
+                            result.push_str(&var_name);
+                            result.push_str("}}");
+                        } else {
+                            result.push('{');
+                            result.push_str(&var_name);
+                            result.push('}');
+                        }
+                    }
+                }
+            } else {
+                // Unclosed brace, keep original
+                if is_double {
+                    result.push_str("{{");
+                } else {
+                    result.push('{');
+                }
+                result.push_str(&var_name);
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
 }
 
 /// Hook commands configuration.
@@ -645,5 +757,178 @@ mod tests {
         let config = Config::try_from(raw).unwrap();
 
         assert!(!config.hooks.has_hooks());
+    }
+
+    #[test]
+    fn test_parse_worktree_path() {
+        let toml = r#"
+            [worktree]
+            path = "../worktrees/"
+        "#;
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(config.worktree.path, Some("../worktrees/".to_string()));
+    }
+
+    #[test]
+    fn test_parse_worktree_path_with_variables() {
+        let toml = r#"
+            [worktree]
+            path = "../{repo_name}-{branch}"
+        "#;
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(
+            config.worktree.path,
+            Some("../{repo_name}-{branch}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_worktree_empty() {
+        let toml = r#"
+            [worktree]
+        "#;
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert!(config.worktree.path.is_none());
+    }
+
+    #[test]
+    fn test_parse_config_without_worktree() {
+        let toml = r#"
+            [[mkdir]]
+            path = "build"
+        "#;
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert!(config.worktree.path.is_none());
+    }
+
+    #[test]
+    fn test_worktree_allows_absolute_path() {
+        let toml = r#"
+            [worktree]
+            path = "/home/user/worktrees/"
+        "#;
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(
+            config.worktree.path,
+            Some("/home/user/worktrees/".to_string())
+        );
+    }
+
+    #[test]
+    fn test_generate_path_without_variables() {
+        let worktree = Worktree {
+            path: Some("../worktrees/".to_string()),
+        };
+        let result = worktree.generate_path("feature/foo", "myrepo");
+        assert_eq!(result, Some("../worktrees/feature/foo".to_string()));
+    }
+
+    #[test]
+    fn test_generate_path_with_variables() {
+        let worktree = Worktree {
+            path: Some("../{repo_name}-{branch}".to_string()),
+        };
+        let result = worktree.generate_path("feature/foo", "myrepo");
+        assert_eq!(result, Some("../myrepo-feature/foo".to_string()));
+    }
+
+    #[test]
+    fn test_generate_path_with_branch_only() {
+        let worktree = Worktree {
+            path: Some("../wt-{branch}".to_string()),
+        };
+        let result = worktree.generate_path("main", "myrepo");
+        assert_eq!(result, Some("../wt-main".to_string()));
+    }
+
+    #[test]
+    fn test_generate_path_with_repo_name_only() {
+        let worktree = Worktree {
+            path: Some("../{repo_name}-worktree".to_string()),
+        };
+        let result = worktree.generate_path("feature/foo", "myrepo");
+        assert_eq!(result, Some("../myrepo-worktree".to_string()));
+    }
+
+    #[test]
+    fn test_generate_path_no_config() {
+        let worktree = Worktree { path: None };
+        let result = worktree.generate_path("feature/foo", "myrepo");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_generate_path_branch_with_slashes() {
+        let worktree = Worktree {
+            path: Some("../".to_string()),
+        };
+        let result = worktree.generate_path("feature/deep/nested", "myrepo");
+        assert_eq!(result, Some("../feature/deep/nested".to_string()));
+    }
+
+    #[test]
+    fn test_generate_path_double_braces() {
+        let worktree = Worktree {
+            path: Some("../{{repo_name}}-{{branch}}-".to_string()),
+        };
+        let result = worktree.generate_path("test", "myrepo");
+        assert_eq!(result, Some("../myrepo-test-".to_string()));
+    }
+
+    #[test]
+    fn test_parse_worktree_path_double_braces() {
+        let toml = r#"
+            [worktree]
+            path = "../{{repo_name}}-{{branch}}"
+        "#;
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(
+            config.worktree.path,
+            Some("../{{repo_name}}-{{branch}}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_generate_path_with_whitespace_in_variables() {
+        let worktree = Worktree {
+            path: Some("../{{ branch }}-{{ repo_name }}".to_string()),
+        };
+        let result = worktree.generate_path("test", "myrepo");
+        assert_eq!(result, Some("../test-myrepo".to_string()));
+    }
+
+    #[test]
+    fn test_generate_path_with_multiple_spaces() {
+        let worktree = Worktree {
+            path: Some("../{{  branch  }}-{{   repo_name   }}-".to_string()),
+        };
+        let result = worktree.generate_path("foo", "bar");
+        assert_eq!(result, Some("../foo-bar-".to_string()));
+    }
+
+    #[test]
+    fn test_generate_path_mixed_formats() {
+        let worktree = Worktree {
+            path: Some("../{branch}/{{ repo_name }}".to_string()),
+        };
+        let result = worktree.generate_path("feature", "myrepo");
+        assert_eq!(result, Some("../feature/myrepo".to_string()));
+    }
+
+    #[test]
+    fn test_parse_worktree_path_with_spaces() {
+        let toml = r#"
+            [worktree]
+            path = "../{{ branch }}/{{ repo_name }}"
+        "#;
+        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert!(config.worktree.path.is_some());
     }
 }

@@ -61,10 +61,28 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
     // Handle interactive mode
     let worktree_path = if args.interactive {
-        run_interactive(&mut args)?
+        run_interactive(&mut args, &config)?
     } else {
-        // Non-interactive: path is required
-        let path = args.path.clone().ok_or(Error::PathRequired)?;
+        // Non-interactive: path is optional if config provides it
+        let path = if let Some(path) = args.path.clone() {
+            path
+        } else {
+            // Try to generate path from config
+            let branch = args
+                .commitish
+                .as_ref()
+                .or(args.new_branch.as_ref())
+                .or(args.new_branch_force.as_ref())
+                .ok_or(Error::PathRequired)?;
+
+            let generated = config
+                .worktree
+                .generate_path(branch, &git::repo_name()?)
+                .ok_or(Error::PathRequired)?;
+
+            PathBuf::from(generated)
+        };
+
         if path.is_absolute() {
             path
         } else {
@@ -237,7 +255,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 }
 
 /// Run interactive mode to select branch and path.
-fn run_interactive(args: &mut AddArgs) -> Result<PathBuf> {
+fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
     // Get list of local and remote branches
     let local_branches = git::list_branches()?;
     let remote_branches = git::list_remote_branches()?;
@@ -256,8 +274,16 @@ fn run_interactive(args: &mut AddArgs) -> Result<PathBuf> {
         args.commitish = Some(branch_choice.branch.clone());
     }
 
-    // Suggest worktree path based on branch name
-    let suggested_path = format!("../{}", branch_choice.branch.replace('/', "-"));
+    // Generate suggested path from config or use default
+    let suggested_path = if let Some(path) = config
+        .worktree
+        .generate_path(&branch_choice.branch, &git::repo_name()?)
+    {
+        path
+    } else {
+        // Default fallback - keep branch name as-is (no sanitization)
+        format!("../{}", branch_choice.branch)
+    };
 
     // Prompt for worktree path
     let path = prompt::prompt_worktree_path(&suggested_path)?;
