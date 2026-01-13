@@ -452,8 +452,11 @@ fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
         HashSet::new()
     };
 
-    // Walk the repository and find matching files
+    // Walk the repository and find matching files and directories
+    // Collect matched directories to avoid processing their contents
+    let mut matched_dirs: HashSet<PathBuf> = HashSet::new();
     let mut results = Vec::new();
+
     for entry in walkdir::WalkDir::new(repo_root)
         .follow_links(false)
         .into_iter()
@@ -462,16 +465,23 @@ fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
     {
         let path = entry.path();
 
-        // Skip if it's a directory
-        if path.is_dir() {
-            continue;
-        }
-
         // Get relative path from repo root
         let rel_path = match path.strip_prefix(repo_root) {
             Ok(p) => p,
             Err(_) => continue,
         };
+
+        // Skip if parent directory was already matched
+        let mut should_skip = false;
+        for matched_dir in &matched_dirs {
+            if rel_path.starts_with(matched_dir) && rel_path != matched_dir {
+                should_skip = true;
+                break;
+            }
+        }
+        if should_skip {
+            continue;
+        }
 
         // Check if it matches the glob pattern
         if !matcher.is_match(rel_path) {
@@ -483,7 +493,12 @@ fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
             continue;
         }
 
-        // Create a link entry for this file
+        // If it's a directory, add to matched_dirs to skip its contents
+        if path.is_dir() {
+            matched_dirs.insert(rel_path.to_path_buf());
+        }
+
+        // Create a link entry for this file or directory
         let mut file_link = link.clone();
         file_link.source = rel_path.to_path_buf();
         file_link.target = rel_path.to_path_buf();
@@ -644,5 +659,66 @@ mod tests {
                 result.len()
             );
         }
+    }
+
+    #[test]
+    fn test_expand_link_with_directory() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let repo_root = temp_dir.path();
+
+        // Create test directory with files inside
+        std::fs::create_dir_all(repo_root.join("testdir")).unwrap();
+        std::fs::write(repo_root.join("testdir/file1.txt"), "content1").unwrap();
+        std::fs::write(repo_root.join("testdir/file2.txt"), "content2").unwrap();
+
+        // Pattern matching the directory
+        let link = Link {
+            source: PathBuf::from("testdir"),
+            target: PathBuf::from("testdir"),
+            on_conflict: None,
+            description: None,
+            skip_tracked: false,
+        };
+
+        let result = expand_link(&link, repo_root).unwrap();
+
+        // Should return only the directory, not its contents
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source, PathBuf::from("testdir"));
+    }
+
+    #[test]
+    fn test_expand_link_with_glob_matching_directory() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let repo_root = temp_dir.path();
+
+        // Create test directories with files inside
+        std::fs::create_dir_all(repo_root.join("dir1")).unwrap();
+        std::fs::write(repo_root.join("dir1/file.txt"), "content1").unwrap();
+        std::fs::create_dir_all(repo_root.join("dir2")).unwrap();
+        std::fs::write(repo_root.join("dir2/file.txt"), "content2").unwrap();
+        std::fs::create_dir_all(repo_root.join("other")).unwrap();
+        std::fs::write(repo_root.join("other/file.txt"), "content3").unwrap();
+
+        // Pattern matching directories starting with "dir"
+        let link = Link {
+            source: PathBuf::from("dir*"),
+            target: PathBuf::from("dir*"),
+            on_conflict: None,
+            description: None,
+            skip_tracked: false,
+        };
+
+        let result = expand_link(&link, repo_root).unwrap();
+
+        // Should return only the directories, not their contents
+        assert_eq!(result.len(), 2);
+
+        let mut sources: Vec<_> = result.iter().map(|l| l.source.clone()).collect();
+        sources.sort();
+        assert_eq!(sources[0], PathBuf::from("dir1"));
+        assert_eq!(sources[1], PathBuf::from("dir2"));
     }
 }
