@@ -1,0 +1,75 @@
+# Glob pattern examples for link operations
+# Link multiple files at once using glob patterns
+
+# Why use glob patterns?
+#
+# Glob patterns are particularly useful for:
+#
+# 1. Test fixtures and development data
+#    - Share personal test data (images, JSON, large files) across worktrees
+#    - Keep them out of git tracking
+#    - No config changes needed when adding new fixtures
+#
+# 2. Local configuration files
+#    - Link multiple local config files in one rule
+#    - Scales as your project grows
+#
+# 3. Development tools and scripts
+#    - Share personal development scripts
+#    - Automatically exclude team-shared scripts (git-tracked)
+#
+# 4. Build caches and temporary files
+#    - Link specific cache files to save disk space and build time
+#
+# The skip_tracked option is especially powerful because:
+#    - Keeps git status clean (linked files don't show as untracked)
+#    - Automatically distinguishes personal files from team-shared files
+#    - Works seamlessly with .gitignore settings
+
+# Example 1: Link all files in a directory
+[[link]]
+source = "fixtures/*"
+description = "Link all files in fixtures directory"
+
+# Example 2: Skip git-tracked files (useful for test fixtures)
+[[link]]
+source = "fixtures/*"
+skip_tracked = true
+description = "Link only untracked test fixtures (skips .gitkeep, etc.)"
+
+# Example 3: Link files with specific extension
+[[link]]
+source = "config/*.json"
+description = "Link all JSON config files"
+
+# Example 4: Link dotfiles
+[[link]]
+source = ".*"
+skip_tracked = true
+description = "Link untracked dotfiles in repo root"
+
+# Example 5: Recursive glob pattern
+[[link]]
+source = "**/*.local"
+description = "Link all .local files recursively"
+
+# Example 6: Multiple patterns for different purposes
+[[link]]
+source = "test/fixtures/*.txt"
+skip_tracked = true
+description = "Link text fixtures"
+
+[[link]]
+source = "test/fixtures/*.json"
+skip_tracked = true
+description = "Link JSON fixtures"
+
+# Supported glob syntax:
+#   *       - matches any number of characters
+#   ?       - matches a single character
+#   [...]   - matches any character in the brackets
+#   **      - matches zero or more directories (recursive)
+#
+# Note: skip_tracked option is useful when you want to:
+# - Link only untracked files (e.g., local configs, test data)
+# - Keep git status clean by not linking git-tracked files
