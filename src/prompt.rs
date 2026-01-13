@@ -1,3 +1,4 @@
+use crate::color::{ColorConfig, ColorScheme};
 use crate::config::OnConflict;
 use crate::error::{Error, Result};
 
@@ -517,27 +518,55 @@ pub(crate) fn prompt_worktree_selection(
 }
 
 /// Prompt for confirmation when safety warnings exist.
-pub(crate) fn prompt_remove_confirmation(warnings: &[SafetyWarning]) -> Result<bool> {
+pub(crate) fn prompt_remove_confirmation(
+    warnings: &[SafetyWarning],
+    color: ColorConfig,
+) -> Result<bool> {
     use inquire::Confirm;
 
     if !is_interactive() {
         return Err(Error::NonInteractive);
     }
 
-    println!("\nWarning: The following worktrees have unsaved work:");
-    for warning in warnings {
-        println!("\n  {}", warning.path.display());
-        if warning.modified_count > 0 {
-            println!("    - {} modified file(s)", warning.modified_count);
+    if color.is_enabled() {
+        println!(
+            "\n{}: The following worktrees have unsaved work:",
+            ColorScheme::warning("Warning")
+        );
+        for warning in warnings {
+            println!(
+                "\n  {}",
+                ColorScheme::path(&warning.path.display().to_string())
+            );
+            if warning.modified_count > 0 {
+                println!("    - {} modified file(s)", warning.modified_count);
+            }
+            if warning.deleted_count > 0 {
+                println!("    - {} deleted file(s)", warning.deleted_count);
+            }
+            if warning.untracked_count > 0 {
+                println!("    - {} untracked file(s)", warning.untracked_count);
+            }
+            if warning.has_unpushed {
+                println!("    - {} unpushed commit(s)", warning.unpushed_count);
+            }
         }
-        if warning.deleted_count > 0 {
-            println!("    - {} deleted file(s)", warning.deleted_count);
-        }
-        if warning.untracked_count > 0 {
-            println!("    - {} untracked file(s)", warning.untracked_count);
-        }
-        if warning.has_unpushed {
-            println!("    - {} unpushed commit(s)", warning.unpushed_count);
+    } else {
+        println!("\nWarning: The following worktrees have unsaved work:");
+        for warning in warnings {
+            println!("\n  {}", warning.path.display());
+            if warning.modified_count > 0 {
+                println!("    - {} modified file(s)", warning.modified_count);
+            }
+            if warning.deleted_count > 0 {
+                println!("    - {} deleted file(s)", warning.deleted_count);
+            }
+            if warning.untracked_count > 0 {
+                println!("    - {} untracked file(s)", warning.untracked_count);
+            }
+            if warning.has_unpushed {
+                println!("    - {} unpushed commit(s)", warning.unpushed_count);
+            }
         }
     }
     println!();
