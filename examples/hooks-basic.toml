@@ -1,0 +1,53 @@
+# Basic hooks examples
+# SECURITY: Hooks require explicit trust via `gwtx trust` before execution
+# PLATFORM: Hooks are currently supported on Unix-like systems (Linux, macOS) only
+
+# Pre-add hooks: Execute before creating worktree
+[[hooks.pre_add]]
+command = "echo 'Preparing worktree setup...'"
+
+[[hooks.pre_add]]
+command = "./scripts/pre-setup.sh"
+description = "Run pre-setup script"
+
+# Post-add hooks: Execute after worktree setup completes
+[[hooks.post_add]]
+command = "echo 'Worktree {{worktree_name}} created at {{worktree_path}}'"
+
+[[hooks.post_add]]
+command = "./scripts/post-setup.sh {{worktree_path}}"
+description = "Run post-setup script"
+
+# Pre-remove hooks: Execute before removing worktree
+[[hooks.pre_remove]]
+command = "echo 'Cleaning up {{worktree_name}}...'"
+
+[[hooks.pre_remove]]
+command = "./scripts/pre-cleanup.sh {{worktree_path}}"
+description = "Run pre-cleanup script"
+
+# Post-remove hooks: Execute after worktree removal
+[[hooks.post_remove]]
+command = "echo 'Removed worktree {{worktree_name}}'"
+
+[[hooks.post_remove]]
+command = "./scripts/cleanup.sh"
+description = "Run cleanup script"
+
+# Template variables (automatically escaped for shell safety):
+#   {{worktree_path}}   - Full path to the worktree
+#   {{worktree_name}}   - Worktree directory name
+#   {{branch}}          - Branch name
+#   {{repo_root}}       - Repository root path
+#
+# Note: Each hook entry has:
+#   command     (required) - Shell command to execute
+#   description (optional) - Shown during execution instead of command
+#
+# Hook execution order:
+#   Add:    pre_add → git worktree add → mkdir/link/copy → post_add
+#   Remove: pre_remove → git worktree remove → post_remove
+#
+# Failure handling:
+#   pre_add/pre_remove failure:  Aborts the operation
+#   post_add/post_remove failure: Shows warning, operation continues

@@ -122,11 +122,13 @@ gwtx untrust --list
 
 ## Configuration
 
-Create `.gwtx.toml` in your repository root (see [`.gwtx.example.toml`](.gwtx.example.toml)):
+Create `.gwtx.toml` in your repository root. See [examples/](examples/) for various use cases.
+
+### Basic Configuration
 
 ```toml
 [options]
-on_conflict = "backup"  # default conflict handling
+on_conflict = "backup"  # abort, skip, overwrite, backup
 
 [[mkdir]]
 path = "build"
@@ -136,28 +138,37 @@ description = "Build output directory"
 source = ".env.local"
 description = "Local environment"
 
-[[link]]
-source = ".envrc"
-description = "direnv configuration"
-
 [[copy]]
 source = ".env.example"
 target = ".env"
-description = "Environment file"
-
-[[hooks.pre_add]]
-command = "echo 'Setting up {{worktree_name}}'"
-
-[[hooks.post_add]]
-command = "npm install"
-description = "Install dependencies"
+description = "Environment template"
 ```
 
-For all available options, see [`.gwtx.example.toml`](.gwtx.example.toml) or run `gwtx config`.
+**Operations:**
+- `[[mkdir]]` - Create directories
+- `[[link]]` - Create symbolic links
+- `[[copy]]` - Copy files or directories
 
-#### Glob Patterns
+**Examples:** [examples/basic.toml](examples/basic.toml)
 
-You can use glob patterns in `[[link]]` source to match multiple files:
+### Worktree Path Configuration
+
+Configure default worktree path with template variables:
+
+```toml
+[worktree]
+path = "../worktrees/{branch}"
+```
+
+**Template variables:**
+- `{branch}` or `{{ branch }}` - Branch name (e.g., `feature/foo`)
+- `{repo_name}` or `{{ repo_name }}` - Repository name (e.g., `myrepo`)
+
+**Examples:** [examples/worktree-path.toml](examples/worktree-path.toml)
+
+### Glob Patterns
+
+Use glob patterns in `[[link]]` to match multiple files:
 
 ```toml
 [[link]]
@@ -166,121 +177,49 @@ skip_tracked = true
 description = "Link untracked test fixtures"
 ```
 
-This is particularly useful when you want to:
-- Link only git-ignored files (e.g., local configs, credentials)
-- Skip git-tracked files (e.g., `.gitkeep`) that would conflict with directory symlinks
-
 **Supported patterns:**
-- `*` - matches any characters (e.g., `secrets/*` matches all files in `secrets/`)
-- `?` - matches a single character (e.g., `file?.txt`)
-- `[...]` - matches character ranges (e.g., `file[0-9].txt`)
+- `*` - matches any characters
+- `?` - matches a single character
+- `[...]` - matches character ranges
+- `**` - matches directories recursively
 
 **Options:**
-- `skip_tracked = true` - Skip git-tracked files when creating symlinks (useful for linking only untracked files)
+- `skip_tracked = true` - Skip git-tracked files (useful for linking only untracked files like local configs or test data)
 
-**Example use case:**
-
-When you have a directory like:
-```
-fixtures/
-├── .gitkeep        (tracked by git)
-├── test-data.json  (ignored by git)
-└── test-image.png  (ignored by git)
-```
-
-Using `source = "fixtures/*"` with `skip_tracked = true` will:
-- Create symlinks for `test-data.json` and `test-image.png`
-- Skip `.gitkeep` (leaving the git-tracked file intact)
-- Keep `git status` clean in the worktree
+**Examples:** [examples/glob-patterns.toml](examples/glob-patterns.toml)
 
 ### Hooks
 
-Execute custom commands before and after worktree operations. **Hooks require explicit trust** via `gwtx trust` for security.
+Execute custom commands before/after worktree operations. **Requires explicit trust via `gwtx trust`.**
 
 ```toml
-[[hooks.pre_add]]
-command = "echo 'Preparing worktree setup...'"
-
-[[hooks.pre_add]]
-command = "./scripts/pre-setup.sh"
-description = "Run pre-setup script"
-
 [[hooks.post_add]]
-command = "cd {{worktree_path}} && npm install"
+command = "npm install"
 description = "Install dependencies"
 
 [[hooks.post_add]]
 command = "mise install"
 description = "Install mise tools"
-
-[[hooks.post_add]]
-command = "direnv allow"
-description = "Trust direnv configuration"
-
-[[hooks.pre_remove]]
-command = "echo 'Cleaning up {{worktree_name}}...'"
-
-[[hooks.post_remove]]
-command = "./scripts/cleanup.sh"
-description = "Run cleanup script"
 ```
 
-**Hook Format:**
-- `command` (required): Shell command to execute
-- `description` (optional): Human-readable description displayed during execution
+**Hook types:**
+- `pre_add` - Before worktree creation
+- `post_add` - After worktree setup
+- `pre_remove` - Before worktree removal
+- `post_remove` - After worktree removal
 
-**Execution Order:**
-
-Hooks execute at specific points during worktree operations:
-
-*gwtx add:*
-1. `pre_add` hooks (run in repo_root, before worktree creation)
-2. `git worktree add` (create worktree directory)
-3. Setup operations (`mkdir`, `link`, `copy` from .gwtx.toml)
-4. `post_add` hooks (run in worktree_path, after all setup completes)
-
-*gwtx remove:*
-1. `pre_remove` hooks (run in worktree_path, before removal)
-2. `git worktree remove` (delete worktree directory)
-3. `post_remove` hooks (run in repo_root, after removal)
-
-**Failure Handling:**
-- `pre_add` / `pre_remove` failure: Aborts the operation
-- Setup operations (`mkdir`/`link`/`copy`) failure: Rolls back worktree creation
-- `post_add` / `post_remove` failure: Displays warning, operation continues
-
-**Template Variables:**
-
-Hooks support template variables for safe value substitution:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `{{worktree_path}}` | Full path to the worktree | `/path/to/worktrees/feature-foo` |
-| `{{worktree_name}}` | Worktree directory name | `feature-foo` |
-| `{{branch}}` | Branch name | `feature/foo` |
-| `{{repo_root}}` | Repository root path | `/path/to/repo` |
+**Template variables:**
+- `{{worktree_path}}` - Full path to worktree
+- `{{worktree_name}}` - Worktree directory name
+- `{{branch}}` - Branch name
+- `{{repo_root}}` - Repository root
 
 **Security:**
+- Variables are shell-escaped automatically
+- Must trust hooks via `gwtx trust` before execution
+- Changes require re-trusting
 
-- Template variables are automatically shell-escaped to prevent command injection
-- Hooks must be explicitly trusted via `gwtx trust` before execution
-- Changes to hooks require re-trusting
-
-**Example:**
-
-```bash
-# First time using hooks
-gwtx add ../feature
-# → Shows warning and requires `gwtx trust`
-
-# Review and trust hooks
-gwtx trust
-# → Shows all hooks and prompts for confirmation
-
-# Now hooks run automatically
-gwtx add ../feature
-# → Hooks execute before/after worktree creation
-```
+**Examples:** [examples/hooks-basic.toml](examples/hooks-basic.toml), [examples/nodejs-project.toml](examples/nodejs-project.toml)
 
 ## Features
 
@@ -374,14 +313,14 @@ Shared:
 Generate completion scripts for your shell:
 
 ```bash
-# Fish
-gwtx completions fish > ~/.config/fish/completions/gwtx.fish
-
 # Bash
 gwtx completions bash > ~/.local/share/bash-completion/completions/gwtx
 
 # Zsh (add ~/.zfunc to your fpath)
 gwtx completions zsh > ~/.zfunc/_gwtx
+
+# Fish
+gwtx completions fish > ~/.config/fish/completions/gwtx.fish
 
 # PowerShell (add to your profile)
 gwtx completions powershell >> $PROFILE
@@ -431,12 +370,6 @@ Without these permissions, `[[link]]` operations will fail with a permission err
 For more information, see:
 - [Symbolic Links - Win32 apps](https://learn.microsoft.com/en-us/windows/win32/fileio/symbolic-links)
 - [CreateSymbolicLink API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinka)
-
-## Roadmap
-
-Planned features for future releases:
-
-- `gwtx config init` - Generate `.gwtx.toml` template
 
 ## License
 
