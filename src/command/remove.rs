@@ -74,7 +74,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
                 display_warning(&output, warning);
             }
         } else if prompt::is_interactive() {
-            if !prompt::prompt_remove_confirmation(&warnings)? {
+            if !prompt::prompt_remove_confirmation(&warnings, color)? {
                 return Err(Error::Aborted);
             }
         } else {
