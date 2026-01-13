@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/h-michael/gwtx/compare/v0.3.0..v0.4.0) - 2026-01-13
+
+
+- **feat**: Add hooks with trust mechanism - ([8f77ecf](https://github.com/h-michael/gwtx/commit/8f77ecfacc8ebf0c12c0ade4d9c603d1874319da))
+- **feat**: Add gwtx list command - ([de2f16d](https://github.com/h-michael/gwtx/commit/de2f16d3c6c8ec5f5d05b7859d799640b2f1e31d))
+- **feat**: Add hook description field and color output options - ([4a222db](https://github.com/h-michael/gwtx/commit/4a222dbe83eaf30b323e178f1f82677b4839089d))
+- **refactor**: Improve code quality and documentation - ([48e55bb](https://github.com/h-michael/gwtx/commit/48e55bbb47ac96c841043b066b630ed30d0d4466))
+- **feat**: Integrate skim fuzzy finder for Unix platforms - ([0178cae](https://github.com/h-michael/gwtx/commit/0178cae33d95e8f675a41a64b717d3b9f5552809))
+- **fix**: Enable directory symlinks with glob patterns - ([fcab10c](https://github.com/h-michael/gwtx/commit/fcab10cc2abe578fd74d40705d5745061ee7f162))
+- **feat**: Add worktree path configuration with variable expansion - ([425c5ca](https://github.com/h-michael/gwtx/commit/425c5caf9074061ef4d3a1644a8b5a2701e47ea4))
+- **feat**: Add color output to remove command warnings - ([5eb286b](https://github.com/h-michael/gwtx/commit/5eb286baf2a70a3621b9521f04bdf0180dcccf08))
+- **docs**: Organize examples into dedicated directory - ([a57e780](https://github.com/h-michael/gwtx/commit/a57e780e7bd703304a767183f1b29d493f686a96))
 ## [0.3.0](https://github.com/h-michael/gwtx/compare/v0.2.0..v0.3.0) - 2026-01-11
 
 

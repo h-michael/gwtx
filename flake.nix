@@ -14,7 +14,7 @@
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "gwtx";
-          version = "0.1.2";
+          version = "0.4.0";
 
           src = ./.;
 
