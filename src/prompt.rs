@@ -148,11 +148,11 @@ fn run_select_with_message(prompt: &str, message: &str, items: Vec<String>) -> R
     run_select(prompt, items)
 }
 
-/// Simple text input with optional default value.
-fn read_line(prompt: &str, default: Option<&str>) -> Result<String> {
+/// Simple text input with optional initial value.
+fn read_line(prompt: &str, initial_value: Option<&str>) -> Result<String> {
     let mut text = Text::new(prompt);
-    if let Some(d) = default {
-        text = text.with_default(d);
+    if let Some(v) = initial_value {
+        text = text.with_initial_value(v);
     }
     text.prompt().map_err(convert_inquire_error)
 }
