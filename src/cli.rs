@@ -67,6 +67,7 @@ pub(crate) enum Command {
     Add(AddArgs),
 
     /// Remove worktrees with safety checks
+    #[command(visible_alias = "rm")]
     Remove(RemoveArgs),
 
     /// List all worktrees
