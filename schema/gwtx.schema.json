@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gwtx configuration",
+  "description": "Configuration file for gwtx (git worktree extra)",
+  "type": "object",
+  "properties": {
+    "copy": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CopyEntry"
+      }
+    },
+    "hooks": {
+      "$ref": "#/$defs/Hooks"
+    },
+    "link": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LinkEntry"
+      }
+    },
+    "mkdir": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MkdirEntry"
+      }
+    },
+    "options": {
+      "$ref": "#/$defs/Options"
+    },
+    "worktree": {
+      "$ref": "#/$defs/Worktree"
+    }
+  },
+  "$defs": {
+    "CopyEntry": {
+      "title": "Copy Entry",
+      "description": "File/directory copy operation",
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "on_conflict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OnConflict"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "default": ""
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "HookEntry": {
+      "title": "Hook Entry",
+      "description": "A hook command with optional description",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "command"
+      ]
+    },
+    "Hooks": {
+      "title": "Hooks",
+      "description": "Hooks that run before/after worktree operations",
+      "type": "object",
+      "properties": {
+        "post_add": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          }
+        },
+        "post_remove": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          }
+        },
+        "pre_add": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          }
+        },
+        "pre_remove": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          }
+        }
+      }
+    },
+    "LinkEntry": {
+      "title": "Link Entry",
+      "description": "Symlink creation operation with glob pattern support",
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "on_conflict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OnConflict"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skip_tracked": {
+          "type": "boolean",
+          "default": false
+        },
+        "source": {
+          "type": "string",
+          "default": ""
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "MkdirEntry": {
+      "title": "Mkdir Entry",
+      "description": "Directory creation operation",
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "OnConflict": {
+      "title": "Conflict Resolution Mode",
+      "description": "How to handle file conflicts during operations",
+      "type": "string",
+      "enum": [
+        "abort",
+        "skip",
+        "overwrite",
+        "backup"
+      ]
+    },
+    "Options": {
+      "title": "Options",
+      "description": "Global options for all operations",
+      "type": "object",
+      "properties": {
+        "on_conflict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OnConflict"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Worktree": {
+      "title": "Worktree",
+      "description": "Worktree path configuration with template variable support",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@ mod config;
 mod list;
 mod man;
 mod remove;
+mod schema;
 mod trust;
 mod untrust;
 
@@ -13,5 +14,6 @@ pub(crate) use config::run as config;
 pub(crate) use list::run as list;
 pub(crate) use man::run as man;
 pub(crate) use remove::run as remove;
+pub(crate) use schema::run as schema;
 pub(crate) use trust::run as trust;
 pub(crate) use untrust::run as untrust;

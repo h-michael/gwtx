@@ -6,7 +6,6 @@ on:
     paths-ignore:
       - "**.md"
       - "LICENSE-*"
-      - ".gwtx.example.toml"
       - "cliff.toml"
       - "flake.nix"
   pull_request:
@@ -14,7 +13,6 @@ on:
     paths-ignore:
       - "**.md"
       - "LICENSE-*"
-      - ".gwtx.example.toml"
       - "cliff.toml"
       - "flake.nix"
 
@@ -67,3 +65,18 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: EmbarkStudios/cargo-deny-action@76cd80eb775d7bbbd2d80292136d74d39e1b4918 # v2.0.14
+
+  schema-check:
+    name: Schema Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate schema and check if up-to-date
+        run: |
+          cargo run --release -- config schema > /tmp/gwtx.schema.json
+          if ! diff -u schema/gwtx.schema.json /tmp/gwtx.schema.json; then
+            echo "Error: schema/gwtx.schema.json is out of date"
+            echo "Please run: gwtx config schema > schema/gwtx.schema.json"
+            exit 1
+          fi

@@ -1,0 +1,12 @@
+## yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+
+# Minimal gwtx configuration
+# Copy this file to .gwtx.yaml in your repository root to get started.
+
+# This is the simplest possible configuration with no operations.
+# gwtx will create worktrees without any additional setup.
+# You can add operations as needed.
+
+# Uncomment to set global conflict handling
+# options:
+#   on_conflict: backup  # abort, skip, overwrite, backup

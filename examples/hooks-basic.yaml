@@ -1,38 +1,37 @@
+## yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+
 # Basic hooks examples
 # SECURITY: Hooks require explicit trust via `gwtx trust` before execution
 # PLATFORM: Hooks are currently supported on Unix-like systems (Linux, macOS) only
 
 # Pre-add hooks: Execute before creating worktree
-[[hooks.pre_add]]
-command = "echo 'Preparing worktree setup...'"
+hooks:
+  pre_add:
+    - command: echo 'Preparing worktree setup...'
 
-[[hooks.pre_add]]
-command = "./scripts/pre-setup.sh"
-description = "Run pre-setup script"
+    - command: ./scripts/pre-setup.sh
+      description: Run pre-setup script
 
-# Post-add hooks: Execute after worktree setup completes
-[[hooks.post_add]]
-command = "echo 'Worktree {{worktree_name}} created at {{worktree_path}}'"
+  # Post-add hooks: Execute after worktree setup completes
+  post_add:
+    - command: echo 'Worktree {{worktree_name}} created at {{worktree_path}}'
 
-[[hooks.post_add]]
-command = "./scripts/post-setup.sh {{worktree_path}}"
-description = "Run post-setup script"
+    - command: ./scripts/post-setup.sh {{worktree_path}}
+      description: Run post-setup script
 
-# Pre-remove hooks: Execute before removing worktree
-[[hooks.pre_remove]]
-command = "echo 'Cleaning up {{worktree_name}}...'"
+  # Pre-remove hooks: Execute before removing worktree
+  pre_remove:
+    - command: echo 'Cleaning up {{worktree_name}}...'
 
-[[hooks.pre_remove]]
-command = "./scripts/pre-cleanup.sh {{worktree_path}}"
-description = "Run pre-cleanup script"
+    - command: ./scripts/pre-cleanup.sh {{worktree_path}}
+      description: Run pre-cleanup script
 
-# Post-remove hooks: Execute after worktree removal
-[[hooks.post_remove]]
-command = "echo 'Removed worktree {{worktree_name}}'"
+  # Post-remove hooks: Execute after worktree removal
+  post_remove:
+    - command: echo 'Removed worktree {{worktree_name}}'
 
-[[hooks.post_remove]]
-command = "./scripts/cleanup.sh"
-description = "Run cleanup script"
+    - command: ./scripts/cleanup.sh
+      description: Run cleanup script
 
 # Template variables (automatically escaped for shell safety):
 #   {{worktree_path}}   - Full path to the worktree

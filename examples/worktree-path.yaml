@@ -1,30 +1,32 @@
+## yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+
 # Worktree path configuration examples
 # Configure how worktree paths are suggested in interactive mode
 # and allow path to be optional in non-interactive mode.
 
 # Example 1: Simple directory prefix (branch appended at the end)
-[worktree]
-path = "../worktrees/"
+worktree:
+  path: ../worktrees/
 # Result for branch "feature/foo": ../worktrees/feature/foo
 
 # Example 2: Custom template with branch variable
-# [worktree]
-# path = "../gwtx-{branch}-"
+# worktree:
+#   path: ../gwtx-{branch}-
 # Result for branch "feature/foo": ../gwtx-feature/foo-
 
 # Example 3: Full template with repo name and branch
-# [worktree]
-# path = "../{repo_name}-{branch}"
+# worktree:
+#   path: ../{repo_name}-{branch}
 # Result for branch "feature/foo" in repo "myrepo": ../myrepo-feature/foo
 
 # Example 4: Absolute path with template
-# [worktree]
-# path = "/home/user/worktrees/{repo_name}/{branch}"
+# worktree:
+#   path: /home/user/worktrees/{repo_name}/{branch}
 # Result: /home/user/worktrees/myrepo/feature/foo
 
 # Example 5: Using {{ }} syntax (equivalent to { })
-# [worktree]
-# path = "../{{ repo_name }}-{{ branch }}"
+# worktree:
+#   path: ../{{ repo_name }}-{{ branch }}
 # Result: ../myrepo-feature/foo
 
 # Available variables:
