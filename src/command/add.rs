@@ -256,6 +256,9 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
 /// Run interactive mode to select branch and path.
 fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
+    // Clear screen before entering interactive mode
+    prompt::clear_screen_interactive();
+
     // Get list of local and remote branches
     let local_branches = git::list_branches()?;
     let remote_branches = git::list_remote_branches()?;

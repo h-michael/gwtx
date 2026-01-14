@@ -155,6 +155,9 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
 }
 
 fn select_worktrees_interactively(worktrees: &[WorktreeInfo]) -> Result<Vec<PathBuf>> {
+    // Clear screen before entering interactive mode
+    prompt::clear_screen_interactive();
+
     let paths = prompt::prompt_worktree_selection(worktrees)?;
     Ok(paths)
 }
