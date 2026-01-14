@@ -47,6 +47,18 @@ fn clear_screen() {
     std::io::stdout().flush().ok();
 }
 
+/// Clear screen before entering interactive mode.
+#[cfg(unix)]
+pub(crate) fn clear_screen_interactive() {
+    clear_screen();
+}
+
+/// Clear screen before entering interactive mode (no-op on Windows).
+#[cfg(windows)]
+pub(crate) fn clear_screen_interactive() {
+    // No-op on Windows
+}
+
 // Unix: skim-based selector (fuzzy search enabled)
 #[cfg(unix)]
 fn skim_select(prompt: &str, items: Vec<String>) -> Result<String> {
