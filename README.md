@@ -173,7 +173,7 @@ worktree:
 
 **Template variables:**
 - `{branch}` or `{{ branch }}` - Branch name (e.g., `feature/foo`)
-- `{repo_name}` or `{{ repo_name }}` - Repository name (e.g., `myrepo`)
+- `{repository}` or `{{ repository }}` - Repository name (e.g., `myrepo`)
 
 **Examples:** [examples/worktree-path.yaml](examples/worktree-path.yaml)
 

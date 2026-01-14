@@ -22,7 +22,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     }
 
     // Get repository root
-    let repo_root = git::repo_root()?;
+    let repo_root = git::repository_root()?;
 
     // Initial config load for trust check
     let initial_config = config::load(&repo_root)?.unwrap_or_default();
@@ -77,7 +77,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
             let generated = config
                 .worktree
-                .generate_path(branch, &git::repo_name()?)
+                .generate_path(branch, &git::repository_name()?)
                 .ok_or(Error::PathRequired)?;
 
             PathBuf::from(generated)
@@ -260,8 +260,22 @@ fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
     let local_branches = git::list_branches()?;
     let remote_branches = git::list_remote_branches()?;
 
+    // Create suggestion generator closure if branch_template is configured
+    let generate_suggestion = config.worktree.branch_template.as_ref().map(|_| {
+        let repository = git::repository_name().unwrap_or_default();
+        let worktree = config.worktree.clone();
+        move |commitish: &str| {
+            let env = config::BranchTemplateEnv {
+                commitish: commitish.to_string(),
+                repository: repository.clone(),
+            };
+            worktree.generate_branch_name(&env).unwrap_or_default()
+        }
+    });
+
     // Prompt for branch selection
-    let branch_choice = prompt::prompt_branch_selection(&local_branches, &remote_branches)?;
+    let branch_choice =
+        prompt::prompt_branch_selection(&local_branches, &remote_branches, generate_suggestion)?;
 
     // Set branch in args
     if branch_choice.create_new {
@@ -277,7 +291,7 @@ fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
     // Generate suggested path from config or use default
     let suggested_path = if let Some(path) = config
         .worktree
-        .generate_path(&branch_choice.branch, &git::repo_name()?)
+        .generate_path(&branch_choice.branch, &git::repository_name()?)
     {
         path
     } else {

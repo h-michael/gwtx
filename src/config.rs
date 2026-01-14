@@ -69,10 +69,11 @@ struct RawOptions {
 #[schemars(
     rename = "Worktree",
     title = "Worktree",
-    description = "Worktree path configuration with template variable support"
+    description = "Worktree path and branch template configuration with template variable support"
 )]
 struct RawWorktree {
-    path: Option<String>,
+    path_template: Option<String>,
+    branch_template: Option<String>,
 }
 
 /// Hook entry with command and optional description.
@@ -289,7 +290,8 @@ impl TryFrom<RawConfig> for Config {
                 on_conflict: raw.options.on_conflict,
             },
             worktree: Worktree {
-                path: raw.worktree.path,
+                path_template: raw.worktree.path_template,
+                branch_template: raw.worktree.branch_template,
             },
             hooks: Hooks {
                 pre_add: raw.hooks.pre_add,
@@ -340,15 +342,16 @@ pub(crate) struct Options {
 /// Worktree path generation configuration.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Worktree {
-    pub path: Option<String>,
+    pub path_template: Option<String>,
+    pub branch_template: Option<String>,
 }
 
 impl Worktree {
     /// Generate suggested worktree path based on configuration.
     /// Returns None if no worktree config is set.
-    pub fn generate_path(&self, branch: &str, repo_name: &str) -> Option<String> {
-        self.path.as_ref().map(|path_template| {
-            let expanded = expand_variables(path_template, branch, repo_name);
+    pub fn generate_path(&self, branch: &str, repository: &str) -> Option<String> {
+        self.path_template.as_ref().map(|path_template| {
+            let expanded = expand_variables(path_template, branch, repository);
             // If no variables were used, append branch at the end (backward compatibility)
             if expanded == *path_template {
                 format!("{}{}", path_template, branch)
@@ -357,12 +360,26 @@ impl Worktree {
             }
         })
     }
+
+    /// Generate suggested branch name based on branch_template configuration.
+    /// Returns None if no branch_template is configured.
+    pub fn generate_branch_name(&self, env: &BranchTemplateEnv) -> Option<String> {
+        self.branch_template
+            .as_ref()
+            .map(|template| expand_branch_template(template, env))
+    }
+}
+
+/// Template environment for branch name generation.
+pub(crate) struct BranchTemplateEnv {
+    pub commitish: String,
+    pub repository: String,
 }
 
 /// Expand variables in a string template.
 /// Supports {var} and {{var}} syntax with optional whitespace.
 /// Examples: {branch}, {{ branch }}, {{  branch  }}
-fn expand_variables(template: &str, branch: &str, repo_name: &str) -> String {
+fn expand_variables(template: &str, branch: &str, repository: &str) -> String {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
 
@@ -404,7 +421,7 @@ fn expand_variables(template: &str, branch: &str, repo_name: &str) -> String {
                 let trimmed = var_name.trim();
                 match trimmed {
                     "branch" => result.push_str(branch),
-                    "repo_name" => result.push_str(repo_name),
+                    "repository" => result.push_str(repository),
                     _ => {
                         // Unknown variable, keep original
                         if is_double {
@@ -433,6 +450,87 @@ fn expand_variables(template: &str, branch: &str, repo_name: &str) -> String {
     }
 
     result
+}
+
+/// Expand variables in a branch template string.
+/// Supports:
+/// - {{commitish}} or {commitish}: The commit-ish (branch name, tag, commit hash, etc.)
+/// - {{repository}} or {repository}: Repository name
+/// - {{strftime(FORMAT)}} or {strftime(FORMAT)}: Date formatting
+fn expand_branch_template(template: &str, env: &BranchTemplateEnv) -> String {
+    let mut result = String::with_capacity(template.len());
+    let mut chars = template.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '{' {
+            let is_double = chars.peek() == Some(&'{');
+            if is_double {
+                chars.next();
+            }
+
+            let mut content = String::new();
+            let mut found_close = false;
+
+            while let Some(c) = chars.next() {
+                if c == '}' {
+                    if is_double {
+                        if chars.peek() == Some(&'}') {
+                            chars.next();
+                            found_close = true;
+                            break;
+                        } else {
+                            content.push(c);
+                        }
+                    } else {
+                        found_close = true;
+                        break;
+                    }
+                } else {
+                    content.push(c);
+                }
+            }
+
+            if found_close {
+                let trimmed = content.trim();
+                let expanded = expand_branch_variable(trimmed, env);
+                result.push_str(&expanded);
+            } else {
+                if is_double {
+                    result.push_str("{{");
+                } else {
+                    result.push('{');
+                }
+                result.push_str(&content);
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
+fn expand_branch_variable(var: &str, env: &BranchTemplateEnv) -> String {
+    match var {
+        "commitish" => env.commitish.clone(),
+        "repository" => env.repository.clone(),
+        _ if var.starts_with("strftime(") && var.ends_with(')') => {
+            let format_str = &var[9..var.len() - 1];
+            // Try to format with chrono, fallback to literal if format is invalid
+            let formatted = chrono::Local::now().format(format_str);
+            let mut result = String::new();
+            match std::fmt::write(&mut result, format_args!("{}", formatted)) {
+                Ok(_) => result,
+                Err(_) => {
+                    // Invalid format string, return as literal
+                    format!("{{{}}}", var)
+                }
+            }
+        }
+        _ => {
+            format!("{{{}}}", var)
+        }
+    }
 }
 
 /// Hook commands configuration.
@@ -918,24 +1016,27 @@ mkdir:
     fn test_parse_worktree_path() {
         let yaml = r#"
 worktree:
-  path: "../worktrees/"
+  path_template: "../worktrees/"
         "#;
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
-        assert_eq!(config.worktree.path, Some("../worktrees/".to_string()));
+        assert_eq!(
+            config.worktree.path_template,
+            Some("../worktrees/".to_string())
+        );
     }
 
     #[test]
     fn test_parse_worktree_path_with_variables() {
         let yaml = r#"
 worktree:
-  path: "../{repo_name}-{branch}"
+  path_template: "../{repository}-{branch}"
         "#;
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert_eq!(
-            config.worktree.path,
-            Some("../{repo_name}-{branch}".to_string())
+            config.worktree.path_template,
+            Some("../{repository}-{branch}".to_string())
         );
     }
 
@@ -946,7 +1047,7 @@ worktree: {}
         "#;
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
-        assert!(config.worktree.path.is_none());
+        assert!(config.worktree.path_template.is_none());
     }
 
     #[test]
@@ -957,19 +1058,19 @@ mkdir:
         "#;
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
-        assert!(config.worktree.path.is_none());
+        assert!(config.worktree.path_template.is_none());
     }
 
     #[test]
     fn test_worktree_allows_absolute_path() {
         let yaml = r#"
 worktree:
-  path: "/home/user/worktrees/"
+  path_template: "/home/user/worktrees/"
         "#;
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert_eq!(
-            config.worktree.path,
+            config.worktree.path_template,
             Some("/home/user/worktrees/".to_string())
         );
     }
@@ -977,7 +1078,8 @@ worktree:
     #[test]
     fn test_generate_path_without_variables() {
         let worktree = Worktree {
-            path: Some("../worktrees/".to_string()),
+            path_template: Some("../worktrees/".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
         assert_eq!(result, Some("../worktrees/feature/foo".to_string()));
@@ -986,7 +1088,8 @@ worktree:
     #[test]
     fn test_generate_path_with_variables() {
         let worktree = Worktree {
-            path: Some("../{repo_name}-{branch}".to_string()),
+            path_template: Some("../{repository}-{branch}".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
         assert_eq!(result, Some("../myrepo-feature/foo".to_string()));
@@ -995,16 +1098,18 @@ worktree:
     #[test]
     fn test_generate_path_with_branch_only() {
         let worktree = Worktree {
-            path: Some("../wt-{branch}".to_string()),
+            path_template: Some("../wt-{branch}".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("main", "myrepo");
         assert_eq!(result, Some("../wt-main".to_string()));
     }
 
     #[test]
-    fn test_generate_path_with_repo_name_only() {
+    fn test_generate_path_with_repository_only() {
         let worktree = Worktree {
-            path: Some("../{repo_name}-worktree".to_string()),
+            path_template: Some("../{repository}-worktree".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
         assert_eq!(result, Some("../myrepo-worktree".to_string()));
@@ -1012,7 +1117,10 @@ worktree:
 
     #[test]
     fn test_generate_path_no_config() {
-        let worktree = Worktree { path: None };
+        let worktree = Worktree {
+            path_template: None,
+            branch_template: None,
+        };
         let result = worktree.generate_path("feature/foo", "myrepo");
         assert_eq!(result, None);
     }
@@ -1020,7 +1128,8 @@ worktree:
     #[test]
     fn test_generate_path_branch_with_slashes() {
         let worktree = Worktree {
-            path: Some("../".to_string()),
+            path_template: Some("../".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("feature/deep/nested", "myrepo");
         assert_eq!(result, Some("../feature/deep/nested".to_string()));
@@ -1029,7 +1138,8 @@ worktree:
     #[test]
     fn test_generate_path_double_braces() {
         let worktree = Worktree {
-            path: Some("../{{repo_name}}-{{branch}}-".to_string()),
+            path_template: Some("../{{repository}}-{{branch}}-".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("test", "myrepo");
         assert_eq!(result, Some("../myrepo-test-".to_string()));
@@ -1039,20 +1149,21 @@ worktree:
     fn test_parse_worktree_path_double_braces() {
         let yaml = r#"
 worktree:
-  path: "../{{repo_name}}-{{branch}}"
+  path_template: "../{{repository}}-{{branch}}"
         "#;
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert_eq!(
-            config.worktree.path,
-            Some("../{{repo_name}}-{{branch}}".to_string())
+            config.worktree.path_template,
+            Some("../{{repository}}-{{branch}}".to_string())
         );
     }
 
     #[test]
     fn test_generate_path_with_whitespace_in_variables() {
         let worktree = Worktree {
-            path: Some("../{{ branch }}-{{ repo_name }}".to_string()),
+            path_template: Some("../{{ branch }}-{{ repository }}".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("test", "myrepo");
         assert_eq!(result, Some("../test-myrepo".to_string()));
@@ -1061,7 +1172,8 @@ worktree:
     #[test]
     fn test_generate_path_with_multiple_spaces() {
         let worktree = Worktree {
-            path: Some("../{{  branch  }}-{{   repo_name   }}-".to_string()),
+            path_template: Some("../{{  branch  }}-{{   repository   }}-".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("foo", "bar");
         assert_eq!(result, Some("../foo-bar-".to_string()));
@@ -1070,7 +1182,8 @@ worktree:
     #[test]
     fn test_generate_path_mixed_formats() {
         let worktree = Worktree {
-            path: Some("../{branch}/{{ repo_name }}".to_string()),
+            path_template: Some("../{branch}/{{ repository }}".to_string()),
+            branch_template: None,
         };
         let result = worktree.generate_path("feature", "myrepo");
         assert_eq!(result, Some("../feature/myrepo".to_string()));
@@ -1080,10 +1193,131 @@ worktree:
     fn test_parse_worktree_path_with_spaces() {
         let yaml = r#"
 worktree:
-  path: "../{{ branch }}/{{ repo_name }}"
+  path_template: "../{{ branch }}/{{ repository }}"
         "#;
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
-        assert!(config.worktree.path.is_some());
+        assert!(config.worktree.path_template.is_some());
+    }
+
+    #[test]
+    fn test_expand_branch_template_commitish() {
+        let env = BranchTemplateEnv {
+            commitish: "feature/auth".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        let result = expand_branch_template("review/{{commitish}}", &env);
+        assert_eq!(result, "review/feature/auth");
+    }
+
+    #[test]
+    fn test_expand_branch_template_repository() {
+        let env = BranchTemplateEnv {
+            commitish: "main".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        let result = expand_branch_template("{{repository}}/review/{{commitish}}", &env);
+        assert_eq!(result, "myrepo/review/main");
+    }
+
+    #[test]
+    fn test_expand_branch_template_strftime() {
+        let env = BranchTemplateEnv {
+            commitish: "fix".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        let result = expand_branch_template("hotfix/{{strftime(%Y)}}/{{commitish}}", &env);
+        assert!(result.starts_with("hotfix/20"));
+        assert!(result.ends_with("/fix"));
+    }
+
+    #[test]
+    fn test_expand_branch_template_single_braces() {
+        let env = BranchTemplateEnv {
+            commitish: "feature".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        let result = expand_branch_template("review/{commitish}", &env);
+        assert_eq!(result, "review/feature");
+    }
+
+    #[test]
+    fn test_expand_branch_template_with_spaces() {
+        let env = BranchTemplateEnv {
+            commitish: "feature".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        let result = expand_branch_template("review/{{ commitish }}", &env);
+        assert_eq!(result, "review/feature");
+    }
+
+    #[test]
+    fn test_expand_branch_template_unknown_variable() {
+        let env = BranchTemplateEnv {
+            commitish: "main".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        let result = expand_branch_template("{{unknown}}/{{commitish}}", &env);
+        assert_eq!(result, "{unknown}/main");
+    }
+
+    #[test]
+    fn test_generate_branch_name() {
+        let worktree = Worktree {
+            path_template: None,
+            branch_template: Some("review/{{commitish}}".to_string()),
+        };
+        let env = BranchTemplateEnv {
+            commitish: "feature/auth".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        let result = worktree.generate_branch_name(&env);
+        assert_eq!(result, Some("review/feature/auth".to_string()));
+    }
+
+    #[test]
+    fn test_generate_branch_name_none() {
+        let worktree = Worktree {
+            path_template: None,
+            branch_template: None,
+        };
+        let env = BranchTemplateEnv {
+            commitish: "main".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        let result = worktree.generate_branch_name(&env);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_worktree_branch_template() {
+        let yaml = r#"
+worktree:
+  path_template: ../worktrees/{{branch}}
+  branch_template: review/{{commitish}}
+        "#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(
+            config.worktree.branch_template,
+            Some("review/{{commitish}}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_expand_branch_template_invalid_strftime() {
+        let env = BranchTemplateEnv {
+            commitish: "main".to_string(),
+            repository: "myrepo".to_string(),
+        };
+        // Invalid format specifiers should not panic, return as literal
+        let result = expand_branch_template("feat/{{strftime(%あ)}}", &env);
+        assert_eq!(result, "feat/{strftime(%あ)}");
+
+        // Mixed valid and invalid
+        let result = expand_branch_template("{{commitish}}-{{strftime(%Y%m%d-%H%M%あ)}}", &env);
+        assert!(result.starts_with("main-"));
+        // The invalid part should be returned as literal
+        assert!(result.contains("strftime"));
     }
 }
