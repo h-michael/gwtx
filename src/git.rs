@@ -129,9 +129,14 @@ pub(crate) fn list_branches() -> Result<Vec<String>> {
 }
 
 /// List remote branch names (e.g., "origin/main").
+/// Filters out symbolic references like "origin" (which points to origin/HEAD).
 pub(crate) fn list_remote_branches() -> Result<Vec<String>> {
     let output = Command::new("git")
-        .args(["branch", "-r", "--format=%(refname:short)"])
+        .args([
+            "for-each-ref",
+            "--format=%(refname:short) %(symref)",
+            "refs/remotes/",
+        ])
         .output()?;
 
     if !output.status.success() {
@@ -140,7 +145,21 @@ pub(crate) fn list_remote_branches() -> Result<Vec<String>> {
 
     Ok(parse_output_lines(&output.stdout)
         .into_iter()
-        .filter(|s| !s.contains("HEAD"))
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.is_empty() {
+                return None;
+            }
+            let branch_name = parts[0];
+            let is_symref = parts.len() > 1 && !parts[1].is_empty();
+
+            // Filter out symbolic references (like "origin" which is origin/HEAD)
+            if is_symref {
+                None
+            } else {
+                Some(branch_name.to_string())
+            }
+        })
         .collect())
 }
 
