@@ -70,6 +70,9 @@ Note: Use `git status` in the worktree directory for detailed status information
 # Remove a worktree with safety checks
 gwtx remove ../feature-branch
 
+# Shorthand alias
+gwtx rm ../feature-branch
+
 # Interactive mode - select worktrees to remove
 gwtx remove --interactive
 
@@ -294,10 +297,11 @@ Shared:
 
 ### gwtx remove
 
-Remove worktrees with safety checks:
+Remove worktrees with safety checks (alias: `gwtx rm`):
 
 ```
 gwtx remove [OPTIONS] [PATHS]...
+gwtx rm [OPTIONS] [PATHS]...
 
 gwtx Options:
   -i, --interactive         Select worktrees interactively
