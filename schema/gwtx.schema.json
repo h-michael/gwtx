@@ -32,6 +32,7 @@
       "$ref": "#/$defs/Worktree"
     }
   },
+  "additionalProperties": false,
   "$defs": {
     "CopyEntry": {
       "title": "Copy Entry",
@@ -64,7 +65,8 @@
             "null"
           ]
         }
-      }
+      },
+      "additionalProperties": false
     },
     "HookEntry": {
       "title": "Hook Entry",
@@ -82,6 +84,7 @@
           "default": null
         }
       },
+      "additionalProperties": false,
       "required": [
         "command"
       ]
@@ -119,7 +122,8 @@
             "$ref": "#/$defs/HookEntry"
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "LinkEntry": {
       "title": "Link Entry",
@@ -156,7 +160,8 @@
             "null"
           ]
         }
-      }
+      },
+      "additionalProperties": false
     },
     "MkdirEntry": {
       "title": "Mkdir Entry",
@@ -173,7 +178,8 @@
           "type": "string",
           "default": ""
         }
-      }
+      },
+      "additionalProperties": false
     },
     "OnConflict": {
       "title": "Conflict Resolution Mode",
@@ -201,7 +207,8 @@
             }
           ]
         }
-      }
+      },
+      "additionalProperties": false
     },
     "Worktree": {
       "title": "Worktree",
@@ -214,7 +221,8 @@
             "null"
           ]
         }
-      }
+      },
+      "additionalProperties": false
     }
   }
 }
