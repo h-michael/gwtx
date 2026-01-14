@@ -33,6 +33,7 @@ pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
 // instead of parse errors, allowing validation to collect all errors at once.
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[schemars(
     title = "gwtx configuration",
     description = "Configuration file for gwtx (git worktree extra)"
@@ -53,6 +54,7 @@ pub(crate) struct RawConfig {
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[schemars(
     rename = "Options",
     title = "Options",
@@ -63,6 +65,7 @@ struct RawOptions {
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[schemars(
     rename = "Worktree",
     title = "Worktree",
@@ -74,6 +77,7 @@ struct RawWorktree {
 
 /// Hook entry with command and optional description.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[schemars(
     title = "Hook Entry",
     description = "A hook command with optional description"
@@ -85,6 +89,7 @@ pub(crate) struct HookEntry {
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[schemars(
     rename = "Hooks",
     title = "Hooks",
@@ -102,6 +107,7 @@ struct RawHooks {
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[schemars(
     rename = "MkdirEntry",
     title = "Mkdir Entry",
@@ -114,6 +120,7 @@ struct RawMkdir {
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[schemars(
     rename = "LinkEntry",
     title = "Link Entry",
@@ -130,6 +137,7 @@ struct RawLink {
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[schemars(
     rename = "CopyEntry",
     title = "Copy Entry",
@@ -668,6 +676,120 @@ copy:
         let msg = err.to_string();
         assert!(msg.contains("copy[0]: source is required"));
         assert!(msg.contains("copy[1]: source is required"));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_top_level() {
+        let yaml = r#"
+invalid_key: "some value"
+link:
+  - source: ".env"
+        "#;
+
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_in_options() {
+        let yaml = r#"
+options:
+  invalid_option: true
+  on_conflict: skip
+        "#;
+
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_in_link() {
+        let yaml = r#"
+link:
+  - source: ".env"
+    invalid_field: "test"
+        "#;
+
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_in_copy() {
+        let yaml = r#"
+copy:
+  - source: ".env"
+    unknown_key: 123
+        "#;
+
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_in_mkdir() {
+        let yaml = r#"
+mkdir:
+  - path: "tmp"
+    invalid: "value"
+        "#;
+
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_in_hooks() {
+        let yaml = r#"
+hooks:
+  invalid_hook: "test"
+  pre_add:
+    - command: "echo test"
+        "#;
+
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_in_hook_entry() {
+        let yaml = r#"
+hooks:
+  pre_add:
+    - command: "echo test"
+      invalid_field: "value"
+        "#;
+
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_in_worktree() {
+        let yaml = r#"
+worktree:
+  path: "../worktrees/"
+  invalid_setting: true
+        "#;
+
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
     }
 
     #[test]
