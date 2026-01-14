@@ -8,7 +8,7 @@ pub(crate) enum Error {
     #[error("Failed to parse config: {message}")]
     ConfigParse { message: String },
 
-    #[error("Invalid config:\n{message}")]
+    #[error("Your '.gwtx.yaml' configuration is invalid.\n\n{message}")]
     ConfigValidation { message: String },
 
     #[error("Not inside a git repository. Run this command from within a git repository.")]
@@ -20,8 +20,10 @@ pub(crate) enum Error {
     #[error("git worktree add failed:\n{stderr}")]
     GitWorktreeAddFailed { stderr: String },
 
-    #[error("Source not found: {path}\n  Check if the file exists in the repository root.")]
-    SourceNotFound { path: PathBuf },
+    #[error(
+        "A source path in '.gwtx.yaml' was not found.\n\n  Path: {path}\n  Reason: This file does not exist at the root of your repository.\n  Fix:    Ensure the path is correct and relative to the repository root."
+    )]
+    SourceNotFound { path: String },
 
     #[error("Failed to create symlink: {source} -> {target}")]
     SymlinkFailed {
@@ -50,16 +52,16 @@ pub(crate) enum Error {
     #[error("Selector error: {message}")]
     Selector { message: String },
 
-    #[error("Cannot remove main worktree: {path}")]
+    #[error("The primary worktree cannot be removed.\n  Path: {}", .path.display())]
     CannotRemoveMainWorktree { path: PathBuf },
 
     #[error("No worktrees available to remove")]
     NoWorktreesToRemove,
 
-    #[error("Worktree has uncommitted changes: {path}\n  Use --force to remove anyway.")]
+    #[error("Worktree has uncommitted changes: {}\n  Use --force to remove anyway.", .path.display())]
     WorktreeHasUncommittedChanges { path: PathBuf },
 
-    #[error("Worktree has unpushed commits: {path}\n  Use --force to remove anyway.")]
+    #[error("Worktree has unpushed commits: {}\n  Use --force to remove anyway.", .path.display())]
     WorktreeHasUnpushedCommits { path: PathBuf },
 
     #[error("Worktree not found: {path}")]

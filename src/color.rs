@@ -48,7 +48,6 @@ impl ColorConfig {
 /// - Comprehensive color palette (maintaining consistent theming)
 pub(crate) struct ColorScheme;
 
-#[allow(dead_code)]
 impl ColorScheme {
     // Operation colors (Creating, Linking, Copying, etc.)
     pub fn operation(text: &str) -> String {
@@ -61,10 +60,6 @@ impl ColorScheme {
 
     pub fn skip(text: &str) -> String {
         text.yellow().to_string()
-    }
-
-    pub fn remove(text: &str) -> String {
-        text.red().to_string()
     }
 
     // Hook colors
@@ -102,24 +97,16 @@ impl ColorScheme {
     }
 
     // List command colors
+    pub fn header(text: &str) -> String {
+        text.bold().white().to_string()
+    }
+
     pub fn branch(text: &str) -> String {
         text.magenta().to_string()
     }
 
     pub fn hash(text: &str) -> String {
         text.yellow().to_string()
-    }
-
-    pub fn status(text: &str) -> String {
-        text.red().to_string()
-    }
-
-    pub fn unpushed(text: &str) -> String {
-        text.cyan().to_string()
-    }
-
-    pub fn locked(text: &str) -> String {
-        text.magenta().to_string()
     }
 
     // Common
