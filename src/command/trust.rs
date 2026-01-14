@@ -1,10 +1,8 @@
 use crate::cli::TrustArgs;
-use crate::color::ColorScheme;
+use crate::color::{ColorConfig, ColorScheme};
 use crate::{config, error::Error, error::Result, git, prompt, trust};
 
-use std::io::IsTerminal;
-
-pub(crate) fn run(args: TrustArgs) -> Result<()> {
+pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
     let repo_root = match args.path {
         Some(p) => p.canonicalize()?,
         None => git::repository_root()?,
@@ -20,7 +18,7 @@ pub(crate) fn run(args: TrustArgs) -> Result<()> {
     }
 
     if args.show {
-        let use_color = std::io::stdout().is_terminal();
+        let use_color = color_config.is_enabled();
 
         println!("Hooks in {}:", repo_root.display());
         if !config.hooks.pre_add.is_empty() {
@@ -153,7 +151,7 @@ pub(crate) fn run(args: TrustArgs) -> Result<()> {
     }
 
     // Display hooks
-    let use_color = std::io::stdout().is_terminal();
+    let use_color = color_config.is_enabled();
 
     if use_color {
         println!(
