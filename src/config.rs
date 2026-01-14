@@ -377,8 +377,8 @@ pub(crate) struct BranchTemplateEnv {
 }
 
 /// Expand variables in a string template.
-/// Supports {var} and {{var}} syntax with optional whitespace.
-/// Examples: {branch}, {{ branch }}, {{  branch  }}
+/// Supports {{var}} syntax with optional whitespace.
+/// Examples: {{branch}}, {{ branch }}, {{  branch  }}
 fn expand_variables(template: &str, branch: &str, repository: &str) -> String {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
@@ -386,18 +386,15 @@ fn expand_variables(template: &str, branch: &str, repository: &str) -> String {
     while let Some(ch) = chars.next() {
         if ch == '{' {
             // Check if it's {{ (double brace)
-            let is_double = chars.peek() == Some(&'{');
-            if is_double {
+            if chars.peek() == Some(&'{') {
                 chars.next(); // consume second {
-            }
 
-            // Collect variable name until closing brace(s)
-            let mut var_name = String::new();
-            let mut found_close = false;
+                // Collect variable name until closing }}
+                let mut var_name = String::new();
+                let mut found_close = false;
 
-            while let Some(ch) = chars.next() {
-                if ch == '}' {
-                    if is_double {
+                while let Some(ch) = chars.next() {
+                    if ch == '}' {
                         // For {{var}}, need to find second }
                         if chars.peek() == Some(&'}') {
                             chars.next(); // consume second }
@@ -407,42 +404,31 @@ fn expand_variables(template: &str, branch: &str, repository: &str) -> String {
                             var_name.push(ch);
                         }
                     } else {
-                        // For {var}, one } is enough
-                        found_close = true;
-                        break;
+                        var_name.push(ch);
                     }
-                } else {
-                    var_name.push(ch);
                 }
-            }
 
-            if found_close {
-                // Trim whitespace and replace variable
-                let trimmed = var_name.trim();
-                match trimmed {
-                    "branch" => result.push_str(branch),
-                    "repository" => result.push_str(repository),
-                    _ => {
-                        // Unknown variable, keep original
-                        if is_double {
+                if found_close {
+                    // Trim whitespace and replace variable
+                    let trimmed = var_name.trim();
+                    match trimmed {
+                        "branch" => result.push_str(branch),
+                        "repository" => result.push_str(repository),
+                        _ => {
+                            // Unknown variable, keep original
                             result.push_str("{{");
                             result.push_str(&var_name);
                             result.push_str("}}");
-                        } else {
-                            result.push('{');
-                            result.push_str(&var_name);
-                            result.push('}');
                         }
                     }
+                } else {
+                    // Unclosed brace, keep original
+                    result.push_str("{{");
+                    result.push_str(&var_name);
                 }
             } else {
-                // Unclosed brace, keep original
-                if is_double {
-                    result.push_str("{{");
-                } else {
-                    result.push('{');
-                }
-                result.push_str(&var_name);
+                // Single {, treat as literal
+                result.push('{');
             }
         } else {
             result.push(ch);
@@ -454,53 +440,49 @@ fn expand_variables(template: &str, branch: &str, repository: &str) -> String {
 
 /// Expand variables in a branch template string.
 /// Supports:
-/// - {{commitish}} or {commitish}: The commit-ish (branch name, tag, commit hash, etc.)
-/// - {{repository}} or {repository}: Repository name
-/// - {{strftime(FORMAT)}} or {strftime(FORMAT)}: Date formatting
+/// - {{commitish}}: The commit-ish (branch name, tag, commit hash, etc.)
+/// - {{repository}}: Repository name
+/// - {{strftime(FORMAT)}}: Date formatting
 fn expand_branch_template(template: &str, env: &BranchTemplateEnv) -> String {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
 
     while let Some(ch) = chars.next() {
         if ch == '{' {
-            let is_double = chars.peek() == Some(&'{');
-            if is_double {
-                chars.next();
-            }
+            // Check if it's {{ (double brace)
+            if chars.peek() == Some(&'{') {
+                chars.next(); // consume second {
 
-            let mut content = String::new();
-            let mut found_close = false;
+                let mut content = String::new();
+                let mut found_close = false;
 
-            while let Some(c) = chars.next() {
-                if c == '}' {
-                    if is_double {
+                while let Some(c) = chars.next() {
+                    if c == '}' {
+                        // For {{var}}, need to find second }
                         if chars.peek() == Some(&'}') {
-                            chars.next();
+                            chars.next(); // consume second }
                             found_close = true;
                             break;
                         } else {
                             content.push(c);
                         }
                     } else {
-                        found_close = true;
-                        break;
+                        content.push(c);
                     }
-                } else {
-                    content.push(c);
                 }
-            }
 
-            if found_close {
-                let trimmed = content.trim();
-                let expanded = expand_branch_variable(trimmed, env);
-                result.push_str(&expanded);
-            } else {
-                if is_double {
-                    result.push_str("{{");
+                if found_close {
+                    let trimmed = content.trim();
+                    let expanded = expand_branch_variable(trimmed, env);
+                    result.push_str(&expanded);
                 } else {
-                    result.push('{');
+                    // Unclosed {{, keep original
+                    result.push_str("{{");
+                    result.push_str(&content);
                 }
-                result.push_str(&content);
+            } else {
+                // Single {, treat as literal
+                result.push('{');
             }
         } else {
             result.push(ch);
@@ -1088,7 +1070,7 @@ worktree:
     #[test]
     fn test_generate_path_with_variables() {
         let worktree = Worktree {
-            path_template: Some("../{repository}-{branch}".to_string()),
+            path_template: Some("../{{repository}}-{{branch}}".to_string()),
             branch_template: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
@@ -1098,7 +1080,7 @@ worktree:
     #[test]
     fn test_generate_path_with_branch_only() {
         let worktree = Worktree {
-            path_template: Some("../wt-{branch}".to_string()),
+            path_template: Some("../wt-{{branch}}".to_string()),
             branch_template: None,
         };
         let result = worktree.generate_path("main", "myrepo");
@@ -1108,7 +1090,7 @@ worktree:
     #[test]
     fn test_generate_path_with_repository_only() {
         let worktree = Worktree {
-            path_template: Some("../{repository}-worktree".to_string()),
+            path_template: Some("../{{repository}}-worktree".to_string()),
             branch_template: None,
         };
         let result = worktree.generate_path("feature/foo", "myrepo");
@@ -1180,13 +1162,14 @@ worktree:
     }
 
     #[test]
-    fn test_generate_path_mixed_formats() {
+    fn test_generate_path_single_braces_literal() {
         let worktree = Worktree {
             path_template: Some("../{branch}/{{ repository }}".to_string()),
             branch_template: None,
         };
         let result = worktree.generate_path("feature", "myrepo");
-        assert_eq!(result, Some("../feature/myrepo".to_string()));
+        // Single braces should be treated as literal
+        assert_eq!(result, Some("../{branch}/myrepo".to_string()));
     }
 
     #[test]
@@ -1232,13 +1215,14 @@ worktree:
     }
 
     #[test]
-    fn test_expand_branch_template_single_braces() {
+    fn test_expand_branch_template_single_braces_literal() {
         let env = BranchTemplateEnv {
             commitish: "feature".to_string(),
             repository: "myrepo".to_string(),
         };
+        // Single braces should be treated as literal
         let result = expand_branch_template("review/{commitish}", &env);
-        assert_eq!(result, "review/feature");
+        assert_eq!(result, "review/{commitish}");
     }
 
     #[test]

@@ -11,28 +11,28 @@ worktree:
 
 # Example 2: Custom template with branch variable
 # worktree:
-#   path_template: ../gwtx-{branch}-
+#   path_template: ../gwtx-{{branch}}-
 # Result for branch "feature/foo": ../gwtx-feature/foo-
 
 # Example 3: Full template with repo name and branch
 # worktree:
-#   path_template: ../{repository}-{branch}
+#   path_template: ../{{repository}}-{{branch}}
 # Result for branch "feature/foo" in repo "myrepo": ../myrepo-feature/foo
 
 # Example 4: Absolute path with template
 # worktree:
-#   path_template: /home/user/worktrees/{repository}/{branch}
+#   path_template: /home/user/worktrees/{{repository}}/{{branch}}
 # Result: /home/user/worktrees/myrepo/feature/foo
 
-# Example 5: Using {{ }} syntax (equivalent to { })
+# Example 5: Using spaces inside braces
 # worktree:
 #   path_template: ../{{ repository }}-{{ branch }}
 # Result: ../myrepo-feature/foo
 
 # Available variables:
-#   {branch} or {{ branch }}       - Branch name as-is (e.g., feature/foo)
-#   {repository} or {{ repository }} - Repository directory name (e.g., myrepo)
+#   {{branch}} or {{ branch }}       - Branch name as-is (e.g., feature/foo)
+#   {{repository}} or {{ repository }} - Repository directory name (e.g., myrepo)
 #
 # Note: Both relative and absolute paths are allowed
-# Note: Both {var} and {{var}} syntax are supported
+# Note: Only {{var}} syntax is supported (single braces are treated as literal)
 # Note: Spaces inside braces are allowed: {{ branch }}, {{  branch  }}, etc.
