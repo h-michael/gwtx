@@ -42,3 +42,11 @@ skim = "0.20"
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "warn"
+unreachable = "deny"

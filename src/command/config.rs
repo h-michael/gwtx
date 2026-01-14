@@ -14,8 +14,8 @@ pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
             let mut cmd = crate::cli::Cli::command();
             let config_cmd = cmd
                 .find_subcommand_mut("config")
-                .expect("config subcommand exists");
-            config_cmd.print_help().expect("print help");
+                .ok_or_else(|| Error::Internal("config subcommand not found".to_string()))?;
+            config_cmd.print_help()?;
             println!();
             Ok(())
         }

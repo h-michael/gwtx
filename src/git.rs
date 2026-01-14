@@ -328,7 +328,7 @@ pub(crate) fn worktree_unpushed_commits(
         .current_dir(worktree_path)
         .output();
 
-    if upstream.is_err() || !upstream.as_ref().unwrap().status.success() {
+    if !matches!(upstream, Ok(ref output) if output.status.success()) {
         return check_unpushed_against_remote(worktree_path);
     }
 
@@ -377,7 +377,7 @@ fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<Unpu
         .current_dir(worktree_path)
         .output();
 
-    if check.is_err() || !check.unwrap().status.success() {
+    if !matches!(check, Ok(ref output) if output.status.success()) {
         // Remote branch doesn't exist - cannot determine unpushed commits
         return Ok(UnpushedCommits {
             has_unpushed: false,
