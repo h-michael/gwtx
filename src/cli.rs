@@ -58,20 +58,6 @@ EXAMPLES:
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Command,
-
-    /// When to use colored output (always, auto, never)
-    #[arg(
-        long,
-        global = true,
-        value_name = "WHEN",
-        default_value = "auto",
-        conflicts_with = "no_color"
-    )]
-    pub color: clap::ColorChoice,
-
-    /// Disable colored output (equivalent to --color=never)
-    #[arg(long, global = true)]
-    pub no_color: bool,
 }
 
 /// Available subcommands.
@@ -298,6 +284,20 @@ pub(crate) struct AddArgs {
     /// Suppress output from both gwtx and git worktree
     #[arg(short, long, help_heading = "Shared Options")]
     pub quiet: bool,
+
+    /// When to use colored output (always, auto, never)
+    #[arg(
+        long,
+        value_name = "WHEN",
+        default_value = "auto",
+        conflicts_with = "no_color",
+        help_heading = "Shared Options"
+    )]
+    pub color: clap::ColorChoice,
+
+    /// Disable colored output (equivalent to --color=never)
+    #[arg(long, help_heading = "Shared Options")]
+    pub no_color: bool,
 }
 
 /// Arguments for the `remove` subcommand.
@@ -337,6 +337,20 @@ pub(crate) struct RemoveArgs {
     /// Suppress output
     #[arg(short, long, help_heading = "Shared Options")]
     pub quiet: bool,
+
+    /// When to use colored output (always, auto, never)
+    #[arg(
+        long,
+        value_name = "WHEN",
+        default_value = "auto",
+        conflicts_with = "no_color",
+        help_heading = "Shared Options"
+    )]
+    pub color: clap::ColorChoice,
+
+    /// Disable colored output (equivalent to --color=never)
+    #[arg(long, help_heading = "Shared Options")]
+    pub no_color: bool,
 }
 
 /// Arguments for the `list` subcommand.
@@ -365,6 +379,19 @@ pub(crate) struct ListArgs {
     /// Show header row
     #[arg(long)]
     pub header: bool,
+
+    /// When to use colored output (always, auto, never)
+    #[arg(
+        long,
+        value_name = "WHEN",
+        default_value = "auto",
+        conflicts_with = "no_color"
+    )]
+    pub color: clap::ColorChoice,
+
+    /// Disable colored output (equivalent to --color=never)
+    #[arg(long)]
+    pub no_color: bool,
 }
 
 /// Arguments for the `trust` subcommand.
@@ -413,6 +440,19 @@ pub(crate) struct TrustArgs {
     /// Show trusted hooks without trusting
     #[arg(long)]
     pub show: bool,
+
+    /// When to use colored output (always, auto, never)
+    #[arg(
+        long,
+        value_name = "WHEN",
+        default_value = "auto",
+        conflicts_with = "no_color"
+    )]
+    pub color: clap::ColorChoice,
+
+    /// Disable colored output (equivalent to --color=never)
+    #[arg(long)]
+    pub no_color: bool,
 }
 
 /// Arguments for the `untrust` subcommand.

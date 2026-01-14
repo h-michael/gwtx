@@ -28,19 +28,45 @@ fn main() -> ExitCode {
     setup_signal_handlers();
 
     let args = cli::parse();
-    let color_choice = if args.no_color {
-        clap::ColorChoice::Never
-    } else {
-        args.color
-    };
-    let color_config = color::ColorConfig::new(color_choice);
 
     let result = match args.command {
-        cli::Command::Add(add_args) => command::add(add_args, color_config),
-        cli::Command::Remove(remove_args) => command::remove(remove_args, color_config),
-        cli::Command::List(list_args) => command::list(list_args, color_config),
+        cli::Command::Add(add_args) => {
+            let color_choice = if add_args.no_color {
+                clap::ColorChoice::Never
+            } else {
+                add_args.color
+            };
+            let color_config = color::ColorConfig::new(color_choice);
+            command::add(add_args, color_config)
+        }
+        cli::Command::Remove(remove_args) => {
+            let color_choice = if remove_args.no_color {
+                clap::ColorChoice::Never
+            } else {
+                remove_args.color
+            };
+            let color_config = color::ColorConfig::new(color_choice);
+            command::remove(remove_args, color_config)
+        }
+        cli::Command::List(list_args) => {
+            let color_choice = if list_args.no_color {
+                clap::ColorChoice::Never
+            } else {
+                list_args.color
+            };
+            let color_config = color::ColorConfig::new(color_choice);
+            command::list(list_args, color_config)
+        }
         cli::Command::Config(config_args) => command::config(config_args.command),
-        cli::Command::Trust(trust_args) => command::trust(trust_args),
+        cli::Command::Trust(trust_args) => {
+            let color_choice = if trust_args.no_color {
+                clap::ColorChoice::Never
+            } else {
+                trust_args.color
+            };
+            let color_config = color::ColorConfig::new(color_choice);
+            command::trust(trust_args, color_config)
+        }
         cli::Command::Untrust(untrust_args) => command::untrust(untrust_args),
         cli::Command::Completions { shell } => command::completions(shell),
         cli::Command::Man => command::man(),
