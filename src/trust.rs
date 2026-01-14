@@ -67,7 +67,7 @@ pub(crate) fn is_trusted(repo_root: &Path, hooks: &Hooks) -> Result<bool> {
     }
 
     let hash = compute_hash(repo_root, hooks)?;
-    let trust_file = trust_dir()?.join(format!("{}.toml", hash));
+    let trust_file = trust_dir()?.join(format!("{}.yaml", hash));
 
     if !trust_file.exists() {
         return Ok(false);
@@ -75,9 +75,10 @@ pub(crate) fn is_trusted(repo_root: &Path, hooks: &Hooks) -> Result<bool> {
 
     // Verify stored content matches current hooks
     let content = fs::read_to_string(&trust_file)?;
-    let entry: TrustEntry = toml::from_str(&content).map_err(|e| Error::TrustFileCorrupted {
-        message: e.to_string(),
-    })?;
+    let entry: TrustEntry =
+        serde_yaml::from_str(&content).map_err(|e| Error::TrustFileCorrupted {
+            message: e.to_string(),
+        })?;
 
     // Verify repo_root matches
     let canonical_root = repo_root
@@ -101,7 +102,7 @@ pub(crate) fn trust(repo_root: &Path, hooks: &Hooks) -> Result<()> {
     fs::create_dir_all(&trust_path)?;
 
     let hash = compute_hash(repo_root, hooks)?;
-    let trust_file = trust_path.join(format!("{}.toml", hash));
+    let trust_file = trust_path.join(format!("{}.yaml", hash));
 
     let canonical_root = repo_root
         .canonicalize()
@@ -118,7 +119,7 @@ pub(crate) fn trust(repo_root: &Path, hooks: &Hooks) -> Result<()> {
         },
     };
 
-    let content = toml::to_string_pretty(&entry).map_err(|e| Error::TrustFileSerialization {
+    let content = serde_yaml::to_string(&entry).map_err(|e| Error::TrustFileSerialization {
         message: e.to_string(),
     })?;
 
@@ -134,7 +135,7 @@ pub(crate) fn untrust(repo_root: &Path, hooks: &Hooks) -> Result<bool> {
     }
 
     let hash = compute_hash(repo_root, hooks)?;
-    let trust_file = trust_dir()?.join(format!("{}.toml", hash));
+    let trust_file = trust_dir()?.join(format!("{}.yaml", hash));
 
     if trust_file.exists() {
         fs::remove_file(&trust_file)?;
@@ -157,9 +158,9 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
         let entry = entry?;
         let path = entry.path();
 
-        if path.extension().is_some_and(|e| e == "toml") {
+        if path.extension().is_some_and(|e| e == "yaml") {
             if let Ok(content) = fs::read_to_string(&path) {
-                if let Ok(trust_entry) = toml::from_str::<TrustEntry>(&content) {
+                if let Ok(trust_entry) = serde_yaml::from_str::<TrustEntry>(&content) {
                     entries.push(trust_entry);
                 }
             }
@@ -457,7 +458,7 @@ mod tests {
 
         // Manually create trust file for same hooks hash but with different repo_root
         let hash = compute_hash(temp_dir1.path(), &hooks).unwrap();
-        let trust_file = trust_dir().unwrap().join(format!("{}.toml", hash));
+        let trust_file = trust_dir().unwrap().join(format!("{}.yaml", hash));
 
         // Overwrite with different repo_root
         let fake_entry = TrustEntry {
@@ -470,7 +471,7 @@ mod tests {
             },
             trusted_at: chrono::Utc::now().to_rfc3339(),
         };
-        let content = toml::to_string(&fake_entry).unwrap();
+        let content = serde_yaml::to_string(&fake_entry).unwrap();
         fs::write(&trust_file, content).unwrap();
 
         // Should not be trusted for temp_dir1 anymore (repo_root mismatch)
@@ -499,8 +500,8 @@ mod tests {
 
         // Corrupt the trust file
         let hash = compute_hash(temp_dir.path(), &hooks).unwrap();
-        let trust_file = trust_dir().unwrap().join(format!("{}.toml", hash));
-        fs::write(&trust_file, "invalid toml content {{{").unwrap();
+        let trust_file = trust_dir().unwrap().join(format!("{}.yaml", hash));
+        fs::write(&trust_file, "invalid yaml content {{{").unwrap();
 
         // Should return an error
         let result = is_trusted(temp_dir.path(), &hooks);

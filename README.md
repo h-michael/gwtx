@@ -16,7 +16,7 @@ Every time you create a git worktree, you end up doing the same manual setup:
 - Copying `.env.example` to `.env`
 - Creating cache directories
 
-gwtx reads `.gwtx.toml` from your repository and runs these tasks automatically when creating a worktree.
+gwtx reads `.gwtx.yaml` from your repository and runs these tasks automatically when creating a worktree.
 
 ## Installation
 
@@ -105,7 +105,7 @@ gwtx config validate
 Hooks allow you to run custom commands before/after worktree operations:
 
 ```bash
-# Review and trust hooks in .gwtx.toml
+# Review and trust hooks in .gwtx.yaml
 gwtx trust
 
 # Show hooks without trusting
@@ -122,59 +122,70 @@ gwtx untrust --list
 
 ## Configuration
 
-Create `.gwtx.toml` in your repository root. See [examples/](examples/) for various use cases.
+Create `.gwtx.yaml` in your repository root. See [examples/](examples/) for various use cases.
+
+**JSON Schema:** The configuration format is validated against a JSON Schema located at `schema/gwtx.schema.json`. This schema can be used with editors that support YAML schema validation for autocomplete and validation.
+
+**Editor Integration:** To enable schema validation in VS Code or other editors using [yaml-language-server](https://github.com/redhat-developer/yaml-language-server#using-inlined-schema), add this comment at the top of your `.gwtx.yaml`:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+
+options:
+  on_conflict: backup
+```
 
 ### Basic Configuration
 
-```toml
-[options]
-on_conflict = "backup"  # abort, skip, overwrite, backup
+```yaml
+options:
+  on_conflict: backup  # abort, skip, overwrite, backup
 
-[[mkdir]]
-path = "build"
-description = "Build output directory"
+mkdir:
+  - path: build
+    description: Build output directory
 
-[[link]]
-source = ".env.local"
-description = "Local environment"
+link:
+  - source: .env.local
+    description: Local environment
 
-[[copy]]
-source = ".env.example"
-target = ".env"
-description = "Environment template"
+copy:
+  - source: .env.example
+    target: .env
+    description: Environment template
 ```
 
 **Operations:**
-- `[[mkdir]]` - Create directories
-- `[[link]]` - Create symbolic links
-- `[[copy]]` - Copy files or directories
+- `mkdir` - Create directories
+- `link` - Create symbolic links
+- `copy` - Copy files or directories
 
-**Examples:** [examples/basic.toml](examples/basic.toml)
+**Examples:** [examples/basic.yaml](examples/basic.yaml)
 
 ### Worktree Path Configuration
 
 Configure default worktree path with template variables:
 
-```toml
-[worktree]
-path = "../worktrees/{branch}"
+```yaml
+worktree:
+  path: ../worktrees/{branch}
 ```
 
 **Template variables:**
 - `{branch}` or `{{ branch }}` - Branch name (e.g., `feature/foo`)
 - `{repo_name}` or `{{ repo_name }}` - Repository name (e.g., `myrepo`)
 
-**Examples:** [examples/worktree-path.toml](examples/worktree-path.toml)
+**Examples:** [examples/worktree-path.yaml](examples/worktree-path.yaml)
 
 ### Glob Patterns
 
-Use glob patterns in `[[link]]` to match multiple files:
+Use glob patterns in `link` operations to match multiple files:
 
-```toml
-[[link]]
-source = "fixtures/*"
-skip_tracked = true
-description = "Link untracked test fixtures"
+```yaml
+link:
+  - source: fixtures/*
+    skip_tracked: true
+    description: Link untracked test fixtures
 ```
 
 **Supported patterns:**
@@ -184,22 +195,21 @@ description = "Link untracked test fixtures"
 - `**` - matches directories recursively
 
 **Options:**
-- `skip_tracked = true` - Skip git-tracked files (useful for linking only untracked files like local configs or test data)
+- `skip_tracked: true` - Skip git-tracked files (useful for linking only untracked files like local configs or test data)
 
-**Examples:** [examples/glob-patterns.toml](examples/glob-patterns.toml)
+**Examples:** [examples/glob-patterns.yaml](examples/glob-patterns.yaml)
 
 ### Hooks
 
 Execute custom commands before/after worktree operations. **Requires explicit trust via `gwtx trust`.**
 
-```toml
-[[hooks.post_add]]
-command = "npm install"
-description = "Install dependencies"
-
-[[hooks.post_add]]
-command = "mise install"
-description = "Install mise tools"
+```yaml
+hooks:
+  post_add:
+    - command: npm install
+      description: Install dependencies
+    - command: mise install
+      description: Install mise tools
 ```
 
 **Hook types:**
@@ -219,7 +229,7 @@ description = "Install mise tools"
 - Must trust hooks via `gwtx trust` before execution
 - Changes require re-trusting
 
-**Examples:** [examples/hooks-basic.toml](examples/hooks-basic.toml), [examples/nodejs-project.toml](examples/nodejs-project.toml)
+**Examples:** [examples/hooks-basic.yaml](examples/hooks-basic.yaml), [examples/nodejs-project.yaml](examples/nodejs-project.yaml)
 
 ## Features
 
@@ -227,10 +237,10 @@ description = "Install mise tools"
 
 | Operation | Description |
 |-----------|-------------|
-| `[[mkdir]]` | Create directories |
-| `[[link]]` | Create symbolic links |
-| `[[copy]]` | Copy files or directories |
-| `[[hooks.*]]` | Run custom commands (requires trust) |
+| `mkdir` | Create directories |
+| `link` | Create symbolic links |
+| `copy` | Copy files or directories |
+| `hooks.*` | Run custom commands (requires trust) |
 
 ### Conflict Handling
 
@@ -241,7 +251,7 @@ When a target file already exists, gwtx can:
 - `overwrite` - Replace the existing file
 - `backup` - Rename existing file to `.bak` and proceed
 
-Set globally in `[options]`, per-operation, or via `--on-conflict` flag.
+Set globally in `options`, per-operation, or via `--on-conflict` flag.
 
 ### Other Options
 
@@ -250,7 +260,7 @@ Set globally in `[options]`, per-operation, or via `--on-conflict` flag.
 | `--interactive`, `-i` | Select branch and path interactively |
 | `--dry-run` | Preview actions without executing |
 | `--quiet`, `-q` | Suppress output |
-| `--no-setup` | Skip setup, run git worktree add only |
+| `--no-setup` | Skip setup (run git worktree add only) |
 
 ## Command Options
 
@@ -265,7 +275,7 @@ gwtx Options:
   -i, --interactive         Interactive mode
       --on-conflict <MODE>  abort, skip, overwrite, backup
       --dry-run             Preview without executing
-      --no-setup            Skip .gwtx.toml setup
+      --no-setup            Skip .gwtx.yaml setup
 
 git worktree Options:
   -b <name>                 Create new branch

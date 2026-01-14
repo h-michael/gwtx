@@ -6,61 +6,66 @@ Example configuration files for various use cases. Browse through these examples
 
 ### Basic Examples
 
-- **[basic.toml](basic.toml)**
+- **[basic.yaml](basic.yaml)**
   Demonstrates the three main operation types: `mkdir`, `link`, and `copy`. Shows conflict handling options and descriptions.
 
-- **[worktree-path.toml](worktree-path.toml)**
+- **[worktree-path.yaml](worktree-path.yaml)**
   Examples of worktree path configuration with template variables (`{branch}`, `{repo_name}`). Useful for customizing worktree location and naming.
 
-- **[glob-patterns.toml](glob-patterns.toml)**
+- **[glob-patterns.yaml](glob-patterns.yaml)**
   Shows how to use glob patterns in `link` operations. Includes `skip_tracked` option for linking only untracked files.
 
-- **[hooks-basic.toml](hooks-basic.toml)**
+- **[hooks-basic.yaml](hooks-basic.yaml)**
   Basic hook examples with template variables. Shows all hook types (`pre_add`, `post_add`, `pre_remove`, `post_remove`) and their execution order.
 
 ### Project-Specific Examples
 
-- **[nodejs-project.toml](nodejs-project.toml)**
+- **[nodejs-project.yaml](nodejs-project.yaml)**
   Node.js project setup with dependency installation (npm/pnpm/yarn). Links environment files and creates build directories.
 
-- **[rust-project.toml](rust-project.toml)**
+- **[rust-project.yaml](rust-project.yaml)**
   Rust project setup with shared build cache. Shows how to link `target` directory and run `cargo check`.
 
-- **[mise-direnv.toml](mise-direnv.toml)**
+- **[mise-direnv.yaml](mise-direnv.yaml)**
   Integration with mise (formerly rtx) and direnv. Automatically installs tools and trusts direnv configuration.
 
-- **[coding-agent.toml](coding-agent.toml)**
+- **[coding-agent.yaml](coding-agent.yaml)**
   Coding agent integration (Claude Code, OpenAI Codex CLI, Cursor, Windsurf, Aider). Shares project-specific coding agent configurations across worktrees.
 
 ## Configuration File Format
 
-All examples use TOML format. The basic structure is:
+All examples use YAML format with JSON Schema validation support. The basic structure is:
 
-```toml
+```yaml
 # Global options (optional)
-[options]
-on_conflict = "backup"  # abort, skip, overwrite, backup
+options:
+  on_conflict: backup  # abort, skip, overwrite, backup
 
 # Worktree path template (optional)
-[worktree]
-path = "../worktrees/{branch}"
+worktree:
+  path: ../worktrees/{branch}
 
 # Operations (all optional)
-[[mkdir]]
-path = "build"
+mkdir:
+  - path: build
 
-[[link]]
-source = ".env.local"
+link:
+  - source: .env.local
 
-[[copy]]
-source = ".env.example"
-target = ".env"
+copy:
+  - source: .env.example
+    target: .env
 
 # Hooks (optional, require trust)
-[[hooks.post_add]]
-command = "npm install"
-description = "Install dependencies"
+hooks:
+  post_add:
+    - command: npm install
+      description: Install dependencies
 ```
+
+### JSON Schema
+
+The configuration format is validated against `schema/gwtx.schema.json`. You can use this with editors that support YAML schema validation (like VS Code with the YAML extension) for autocomplete and validation.
 
 ## Hook Security
 
@@ -83,4 +88,3 @@ Hooks are only supported on Unix-like systems (Linux, macOS). Windows users shou
 
 - [Main README](../README.md) - Full documentation
 - [Installation Guide](../INSTALL.md) - How to install
-- [Root Example](../.gwtx.example.toml) - Quick reference with all options

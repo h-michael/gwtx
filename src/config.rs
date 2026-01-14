@@ -4,10 +4,11 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Config file name
-pub const CONFIG_FILE_NAME: &str = ".gwtx.toml";
+pub const CONFIG_FILE_NAME: &str = ".gwtx.yaml";
 
 /// Load config from the repository root. Returns None if config file doesn't exist.
 pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
@@ -20,19 +21,23 @@ pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
     let content = fs::read_to_string(&config_path)?;
 
     // Parse into RawConfig (permissive, all fields optional)
-    let raw: RawConfig = toml::from_str(&content).map_err(|e| Error::ConfigParse {
-        message: e.message().to_string(),
+    let raw: RawConfig = serde_yaml::from_str(&content).map_err(|e| Error::ConfigParse {
+        message: e.to_string(),
     })?;
 
     // Convert to Config (validates and transforms)
     Config::try_from(raw).map(Some)
 }
 
-// Raw types for permissive TOML parsing. Missing fields get default values
+// Raw types for permissive YAML parsing. Missing fields get default values
 // instead of parse errors, allowing validation to collect all errors at once.
 
-#[derive(Debug, Deserialize, Default)]
-struct RawConfig {
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[schemars(
+    title = "gwtx configuration",
+    description = "Configuration file for gwtx (git worktree extra)"
+)]
+pub(crate) struct RawConfig {
     #[serde(default)]
     options: RawOptions,
     #[serde(default)]
@@ -47,25 +52,44 @@ struct RawConfig {
     copy: Vec<RawCopy>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[schemars(
+    rename = "Options",
+    title = "Options",
+    description = "Global options for all operations"
+)]
 struct RawOptions {
     on_conflict: Option<OnConflict>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[schemars(
+    rename = "Worktree",
+    title = "Worktree",
+    description = "Worktree path configuration with template variable support"
+)]
 struct RawWorktree {
     path: Option<String>,
 }
 
 /// Hook entry with command and optional description.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
+#[schemars(
+    title = "Hook Entry",
+    description = "A hook command with optional description"
+)]
 pub(crate) struct HookEntry {
     pub command: String,
     #[serde(default)]
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[schemars(
+    rename = "Hooks",
+    title = "Hooks",
+    description = "Hooks that run before/after worktree operations"
+)]
 struct RawHooks {
     #[serde(default)]
     pre_add: Vec<HookEntry>,
@@ -77,14 +101,24 @@ struct RawHooks {
     post_remove: Vec<HookEntry>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[schemars(
+    rename = "MkdirEntry",
+    title = "Mkdir Entry",
+    description = "Directory creation operation"
+)]
 struct RawMkdir {
     #[serde(default)]
     path: PathBuf,
     description: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[schemars(
+    rename = "LinkEntry",
+    title = "Link Entry",
+    description = "Symlink creation operation with glob pattern support"
+)]
 struct RawLink {
     #[serde(default)]
     source: PathBuf,
@@ -95,7 +129,12 @@ struct RawLink {
     skip_tracked: bool,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[schemars(
+    rename = "CopyEntry",
+    title = "Copy Entry",
+    description = "File/directory copy operation"
+)]
 struct RawCopy {
     #[serde(default)]
     source: PathBuf,
@@ -106,7 +145,7 @@ struct RawCopy {
 
 // Validated types used by the application. Guaranteed valid after TryFrom conversion.
 
-/// Root configuration from .gwtx.toml.
+/// Root configuration from .gwtx.yaml.
 #[derive(Debug, Default)]
 pub(crate) struct Config {
     pub options: Options,
@@ -434,7 +473,11 @@ pub(crate) struct Copy {
 }
 
 /// Conflict resolution mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[schemars(
+    title = "Conflict Resolution Mode",
+    description = "How to handle file conflicts during operations"
+)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum OnConflict {
     Abort,
@@ -449,12 +492,12 @@ mod tests {
 
     #[test]
     fn test_parse_minimal_config() {
-        let toml = r#"
-            [[link]]
-            source = ".env.local"
+        let yaml = r#"
+link:
+  - source: ".env.local"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert_eq!(config.link.len(), 1);
         assert_eq!(config.link[0].source, PathBuf::from(".env.local"));
@@ -463,30 +506,28 @@ mod tests {
 
     #[test]
     fn test_parse_full_config() {
-        let toml = r#"
-            [options]
-            on_conflict = "skip"
+        let yaml = r#"
+options:
+  on_conflict: skip
 
-            [[mkdir]]
-            path = "tmp/cache"
-            description = "Create cache dir"
+mkdir:
+  - path: "tmp/cache"
+    description: "Create cache dir"
 
-            [[link]]
-            source = ".env.local"
+link:
+  - source: ".env.local"
+  - source: ".secret/creds.json"
+    target: "config/creds.json"
+    on_conflict: abort
+    description: "Link credentials"
 
-            [[link]]
-            source = ".secret/creds.json"
-            target = "config/creds.json"
-            on_conflict = "abort"
-            description = "Link credentials"
-
-            [[copy]]
-            source = ".env.example"
-            target = ".env"
-            on_conflict = "backup"
+copy:
+  - source: ".env.example"
+    target: ".env"
+    on_conflict: backup
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
 
         assert_eq!(config.options.on_conflict, Some(OnConflict::Skip));
@@ -511,8 +552,8 @@ mod tests {
 
     #[test]
     fn test_parse_empty_config() {
-        let toml = "";
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let yaml = "";
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert!(config.link.is_empty());
         assert!(config.copy.is_empty());
@@ -520,93 +561,91 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_invalid_toml() {
-        let toml = "invalid toml [[[";
-        let result: std::result::Result<RawConfig, _> = toml::from_str(toml);
+    fn test_parse_invalid_yaml() {
+        let yaml = "invalid: yaml: [[[";
+        let result: std::result::Result<RawConfig, _> = serde_yaml::from_str(yaml);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_missing_source() {
-        let toml = r#"
-            [[link]]
-            target = ".env"
+        let yaml = r#"
+link:
+  - target: ".env"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let err = Config::try_from(raw).unwrap_err();
         assert!(err.to_string().contains("source is required"));
     }
 
     #[test]
     fn test_validate_missing_mkdir_path() {
-        let toml = r#"
-            [[mkdir]]
-            description = "test"
+        let yaml = r#"
+mkdir:
+  - description: "test"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let err = Config::try_from(raw).unwrap_err();
         assert!(err.to_string().contains("path is required"));
     }
 
     #[test]
     fn test_validate_absolute_path() {
-        let toml = r#"
-            [[link]]
-            source = "/etc/passwd"
+        let yaml = r#"
+link:
+  - source: "/etc/passwd"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let err = Config::try_from(raw).unwrap_err();
         assert!(err.to_string().contains("absolute paths are not allowed"));
     }
 
     #[test]
     fn test_validate_path_traversal() {
-        let toml = r#"
-            [[copy]]
-            source = "../../../etc/passwd"
-            target = "passwd"
+        let yaml = r#"
+copy:
+  - source: "../../../etc/passwd"
+    target: "passwd"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let err = Config::try_from(raw).unwrap_err();
         assert!(err.to_string().contains("path traversal"));
     }
 
     #[test]
     fn test_validate_duplicate_targets() {
-        let toml = r#"
-            [[link]]
-            source = ".env.local"
-            target = ".env"
-
-            [[link]]
-            source = ".env.prod"
-            target = ".env"
+        let yaml = r#"
+link:
+  - source: ".env.local"
+    target: ".env"
+  - source: ".env.prod"
+    target: ".env"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let err = Config::try_from(raw).unwrap_err();
         assert!(err.to_string().contains("duplicate target path"));
     }
 
     #[test]
     fn test_validate_collects_multiple_errors() {
-        let toml = r#"
-            [[mkdir]]
-            description = "no path"
+        let yaml = r#"
+mkdir:
+  - description: "no path"
 
-            [[link]]
-            source = "/etc/passwd"
+link:
+  - source: "/etc/passwd"
 
-            [[copy]]
-            source = "../secret"
-            target = "secret"
+copy:
+  - source: "../secret"
+    target: "secret"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let err = Config::try_from(raw).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("path is required"));
@@ -616,17 +655,15 @@ mod tests {
 
     #[test]
     fn test_validate_multiple_missing_sources() {
-        let toml = r#"
-            [[copy]]
-            description = "copy test1"
-            target = "test1-copy"
-
-            [[copy]]
-            description = "copy test2"
-            target = "test2-copy"
+        let yaml = r#"
+copy:
+  - description: "copy test1"
+    target: "test1-copy"
+  - description: "copy test2"
+    target: "test2-copy"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let err = Config::try_from(raw).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("copy[0]: source is required"));
@@ -689,25 +726,21 @@ mod tests {
 
     #[test]
     fn test_parse_config_with_hooks() {
-        let toml = r#"
-            [[hooks.pre_add]]
-            command = "echo 'pre add'"
-
-            [[hooks.post_add]]
-            command = "npm install"
-
-            [[hooks.post_add]]
-            command = "mise install"
-            description = "Install mise tools"
-
-            [[hooks.pre_remove]]
-            command = "echo 'pre remove'"
-
-            [[hooks.post_remove]]
-            command = "./scripts/cleanup.sh"
+        let yaml = r#"
+hooks:
+  pre_add:
+    - command: "echo 'pre add'"
+  post_add:
+    - command: "npm install"
+    - command: "mise install"
+      description: "Install mise tools"
+  pre_remove:
+    - command: "echo 'pre remove'"
+  post_remove:
+    - command: "./scripts/cleanup.sh"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
 
         assert_eq!(config.hooks.pre_add.len(), 1);
@@ -732,11 +765,11 @@ mod tests {
 
     #[test]
     fn test_parse_config_with_empty_hooks() {
-        let toml = r#"
-            [hooks]
+        let yaml = r#"
+hooks: {}
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
 
         assert!(!config.hooks.has_hooks());
@@ -748,12 +781,12 @@ mod tests {
 
     #[test]
     fn test_parse_config_without_hooks() {
-        let toml = r#"
-            [[mkdir]]
-            path = "build"
+        let yaml = r#"
+mkdir:
+  - path: "build"
         "#;
 
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
 
         assert!(!config.hooks.has_hooks());
@@ -761,22 +794,22 @@ mod tests {
 
     #[test]
     fn test_parse_worktree_path() {
-        let toml = r#"
-            [worktree]
-            path = "../worktrees/"
+        let yaml = r#"
+worktree:
+  path: "../worktrees/"
         "#;
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert_eq!(config.worktree.path, Some("../worktrees/".to_string()));
     }
 
     #[test]
     fn test_parse_worktree_path_with_variables() {
-        let toml = r#"
-            [worktree]
-            path = "../{repo_name}-{branch}"
+        let yaml = r#"
+worktree:
+  path: "../{repo_name}-{branch}"
         "#;
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert_eq!(
             config.worktree.path,
@@ -786,32 +819,32 @@ mod tests {
 
     #[test]
     fn test_parse_worktree_empty() {
-        let toml = r#"
-            [worktree]
+        let yaml = r#"
+worktree: {}
         "#;
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert!(config.worktree.path.is_none());
     }
 
     #[test]
     fn test_parse_config_without_worktree() {
-        let toml = r#"
-            [[mkdir]]
-            path = "build"
+        let yaml = r#"
+mkdir:
+  - path: "build"
         "#;
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert!(config.worktree.path.is_none());
     }
 
     #[test]
     fn test_worktree_allows_absolute_path() {
-        let toml = r#"
-            [worktree]
-            path = "/home/user/worktrees/"
+        let yaml = r#"
+worktree:
+  path: "/home/user/worktrees/"
         "#;
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert_eq!(
             config.worktree.path,
@@ -882,11 +915,11 @@ mod tests {
 
     #[test]
     fn test_parse_worktree_path_double_braces() {
-        let toml = r#"
-            [worktree]
-            path = "../{{repo_name}}-{{branch}}"
+        let yaml = r#"
+worktree:
+  path: "../{{repo_name}}-{{branch}}"
         "#;
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert_eq!(
             config.worktree.path,
@@ -923,11 +956,11 @@ mod tests {
 
     #[test]
     fn test_parse_worktree_path_with_spaces() {
-        let toml = r#"
-            [worktree]
-            path = "../{{ branch }}/{{ repo_name }}"
+        let yaml = r#"
+worktree:
+  path: "../{{ branch }}/{{ repo_name }}"
         "#;
-        let raw: RawConfig = toml::from_str(toml).unwrap();
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
         assert!(config.worktree.path.is_some());
     }

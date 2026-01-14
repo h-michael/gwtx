@@ -10,7 +10,7 @@ use clap_complete::Shell;
 #[command(version)]
 #[command(after_help = "\
 CONFIGURATION:
-    gwtx reads .gwtx.toml from the repository root for setup instructions.
+    gwtx reads .gwtx.yaml from the repository root for setup instructions.
     See https://github.com/h-michael/git-setup-worktree for config format.
 
 COLOR OUTPUT:
@@ -27,7 +27,7 @@ COLOR OUTPUT:
 
 EXAMPLES:
     gwtx add ../feature-branch
-        Create worktree and run setup from .gwtx.toml
+        Create worktree and run setup from .gwtx.yaml
 
     gwtx add -b new-feature ../new-feature
         Create new branch and worktree with setup
@@ -51,7 +51,7 @@ EXAMPLES:
         Preview what would be removed without executing
 
     gwtx trust
-        Trust hooks in .gwtx.toml (required for hook execution)
+        Trust hooks in .gwtx.yaml (required for hook execution)
 
     gwtx untrust --list
         List all trusted repositories")]
@@ -87,13 +87,13 @@ pub(crate) enum Command {
     #[command(visible_alias = "ls")]
     List(ListArgs),
 
-    /// Manage .gwtx.toml configuration
+    /// Manage .gwtx.yaml configuration
     Config(ConfigArgs),
 
-    /// Trust hooks in .gwtx.toml for the current repository
+    /// Trust hooks in .gwtx.yaml for the current repository
     Trust(TrustArgs),
 
-    /// Revoke trust for hooks in .gwtx.toml
+    /// Revoke trust for hooks in .gwtx.yaml
     Untrust(UntrustArgs),
 
     /// Generate shell completion script
@@ -110,47 +110,46 @@ pub(crate) enum Command {
 #[derive(Parser, Debug)]
 #[command(after_help = "\
 CONFIG FORMAT:
-    [options]
-    on_conflict = \"backup\"    # Optional, see CONFLICT MODES below
+    options:
+      on_conflict: backup    # Optional, see CONFLICT MODES below
 
-    [[mkdir]]
-    path = \"build\"            # Required, relative to worktree
-    description = \"...\"       # Optional
+    mkdir:
+      - path: build          # Required, relative to worktree
+        description: ...     # Optional
 
-    [[link]]
-    source = \".env.local\"     # Required, relative to repo root (supports glob patterns)
-    target = \".env.local\"     # Optional, defaults to source
-    on_conflict = \"skip\"      # Optional, overrides global
-    description = \"...\"       # Optional
+    link:
+      - source: .env.local   # Required, relative to repo root (supports glob patterns)
+        target: .env.local   # Optional, defaults to source
+        on_conflict: skip    # Optional, overrides global
+        description: ...     # Optional
 
-    [[link]]
-    source = \".envrc\"
-    description = \"...\"
+      - source: .envrc
+        description: ...
 
-    [[link]]
-    source = \"fixtures/*\"     # Glob pattern support
-    skip_tracked = true       # Optional, skip git-tracked files (for glob patterns)
-    description = \"...\"
+      - source: fixtures/*   # Glob pattern support
+        skip_tracked: true   # Optional, skip git-tracked files (for glob patterns)
+        description: ...
 
-    [[copy]]
-    source = \".env.example\"   # Required, relative to repo root
-    target = \".env\"           # Optional, defaults to source
-    on_conflict = \"backup\"    # Optional, overrides global
-    description = \"...\"       # Optional
+    copy:
+      - source: .env.example # Required, relative to repo root
+        target: .env         # Optional, defaults to source
+        on_conflict: backup  # Optional, overrides global
+        description: ...     # Optional
 
-    [[hooks.pre_add]]
-    command = \"echo 'Setting up {{worktree_name}}'\"
+    hooks:
+      pre_add:
+        - command: echo 'Setting up {{worktree_name}}'
 
-    [[hooks.post_add]]
-    command = \"npm install\"
-    description = \"Install dependencies\"  # Optional
+      post_add:
+        - command: npm install
+          description: Install dependencies  # Optional
 
-    [[hooks.pre_remove]]
-    command = \"echo 'Cleaning up {{worktree_name}}'\"
+      pre_remove:
+        - command: echo 'Cleaning up {{worktree_name}}'
 
-    [[hooks.post_remove]]
-    command = \"./scripts/cleanup.sh\"
-    description = \"Run cleanup script\"
+      post_remove:
+        - command: ./scripts/cleanup.sh
+          description: Run cleanup script
 
 CONFLICT MODES:
     abort      Stop immediately when a conflict is found
@@ -161,12 +160,12 @@ CONFLICT MODES:
     Default: prompt interactively (error if non-interactive, use --on-conflict)
 
 GLOB PATTERNS:
-    [[link]] supports glob patterns in the source field:
-        source = \"fixtures/*\"       Match all files in fixtures/
-        source = \"file?.txt\"        Match single character
-        source = \"file[0-9].txt\"    Match character ranges
+    link entries support glob patterns in the source field:
+        source: fixtures/*       Match all files in fixtures/
+        source: file?.txt        Match single character
+        source: file[0-9].txt    Match character ranges
 
-    With skip_tracked = true, only git-ignored files are linked, while
+    With skip_tracked: true, only git-ignored files are linked, while
     git-tracked files (like .gitkeep) are skipped. This keeps git status clean.
 
 HOOKS:
@@ -177,9 +176,10 @@ HOOKS:
     Windows users: Use Git Bash/WSL or --no-setup flag.
 
     Format:
-        [[hooks.pre_add]]
-        command = \"...\"       # Required: shell command to execute
-        description = \"...\"   # Optional: human-readable description
+        hooks:
+          pre_add:
+            - command: ...       # Required: shell command to execute
+              description: ...   # Optional: human-readable description
 
     Execution order (gwtx add):
         1. pre_add (repo_root) → 2. git worktree add →
@@ -202,8 +202,10 @@ pub(crate) struct ConfigArgs {
 /// Config subcommands.
 #[derive(Subcommand, Debug)]
 pub(crate) enum ConfigCommand {
-    /// Validate .gwtx.toml configuration
+    /// Validate .gwtx.yaml configuration
     Validate,
+    /// Generate JSON Schema for configuration
+    Schema,
 }
 
 /// Arguments for the `add` subcommand.
@@ -239,7 +241,7 @@ pub(crate) struct AddArgs {
     #[arg(long, help_heading = "gwtx Options")]
     pub dry_run: bool,
 
-    /// Skip .gwtx.toml setup, run git worktree add only
+    /// Skip .gwtx.yaml setup, run git worktree add only
     #[arg(long, help_heading = "gwtx Options")]
     pub no_setup: bool,
 
@@ -375,7 +377,7 @@ SECURITY:
     Trust is stored in: ~/.local/share/gwtx/trusted/
     Each repository's hooks are identified by a SHA256 hash.
 
-    If hooks are modified in .gwtx.toml, you must re-trust them.
+    If hooks are modified in .gwtx.yaml, you must re-trust them.
 
 HOOKS:
     Platform support: Unix-like systems (Linux, macOS) only.
@@ -397,7 +399,7 @@ HOOKS:
 
 EXAMPLES:
     gwtx trust
-        Trust hooks in .gwtx.toml for the current repository
+        Trust hooks in .gwtx.yaml for the current repository
 
     gwtx trust --show
         Show hooks and trust status without trusting

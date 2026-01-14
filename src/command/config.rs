@@ -7,6 +7,7 @@ use crate::git;
 pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
     match command {
         Some(ConfigCommand::Validate) => validate(),
+        Some(ConfigCommand::Schema) => crate::command::schema(),
         None => {
             // Show help when no subcommand is given
             use clap::CommandFactory;
