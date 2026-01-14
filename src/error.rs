@@ -109,6 +109,9 @@ pub(crate) enum Error {
     )]
     WindowsHooksNotSupported,
 
+    #[error("Internal error: {0}")]
+    Internal(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

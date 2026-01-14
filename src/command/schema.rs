@@ -5,7 +5,7 @@ use crate::error::Result;
 pub(crate) fn run() -> Result<()> {
     let schema = schemars::schema_for!(RawConfig);
     let json = serde_json::to_string_pretty(&schema)
-        .expect("Failed to serialize schema (this should never happen)");
+        .map_err(|e| crate::error::Error::Internal(format!("Failed to serialize schema: {}", e)))?;
     println!("{json}");
     Ok(())
 }
