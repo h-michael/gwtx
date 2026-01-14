@@ -314,14 +314,6 @@ Shared:
   -q, --quiet               Suppress output
 ```
 
-**Interactive Mode Keybindings:**
-- `↑/↓` or `Ctrl+n/p` - Navigate
-- `Space` - Toggle selection
-- `→` (Right arrow) - Select all
-- `←` (Left arrow) - Clear all
-- `Enter` - Confirm
-- `Esc` or `Ctrl+c` - Cancel
-
 ## Shell Completion
 
 Generate completion scripts for your shell:
