@@ -97,7 +97,7 @@ pub(crate) enum Command {
 #[derive(Parser, Debug)]
 #[command(after_help = "\
 CONFIG FORMAT:
-    options:
+    defaults:
       on_conflict: backup    # Optional, see CONFLICT MODES below
 
     mkdir:
@@ -114,7 +114,7 @@ CONFIG FORMAT:
         description: ...
 
       - source: fixtures/*   # Glob pattern support
-        skip_tracked: true   # Optional, skip git-tracked files (for glob patterns)
+        ignore_tracked: true # Optional, skip git-tracked files (for glob patterns)
         description: ...
 
     copy:
@@ -152,7 +152,7 @@ GLOB PATTERNS:
         source: file?.txt        Match single character
         source: file[0-9].txt    Match character ranges
 
-    With skip_tracked: true, only git-ignored files are linked, while
+    With ignore_tracked: true, only git-ignored files are linked, while
     git-tracked files (like .gitkeep) are skipped. This keeps git status clean.
 
 HOOKS:

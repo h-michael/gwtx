@@ -4,7 +4,7 @@
 # This file demonstrates the three main operation types: mkdir, link, and copy
 
 # Global options
-options:
+defaults:
   on_conflict: backup  # abort, skip, overwrite, backup
 
 # Create directories in the new worktree

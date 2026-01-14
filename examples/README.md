@@ -13,7 +13,7 @@ Example configuration files for various use cases. Browse through these examples
   Examples of worktree path configuration with template variables (`{branch}`, `{repository}`). Useful for customizing worktree location and naming.
 
 - **[glob-patterns.yaml](glob-patterns.yaml)**
-  Shows how to use glob patterns in `link` operations. Includes `skip_tracked` option for linking only untracked files.
+  Shows how to use glob patterns in `link` operations. Includes `ignore_tracked` option for linking only untracked files.
 
 - **[hooks-basic.yaml](hooks-basic.yaml)**
   Basic hook examples with template variables. Shows all hook types (`pre_add`, `post_add`, `pre_remove`, `post_remove`) and their execution order.
@@ -38,7 +38,7 @@ All examples use YAML format with JSON Schema validation support. The basic stru
 
 ```yaml
 # Global options (optional)
-options:
+defaults:
   on_conflict: backup  # abort, skip, overwrite, backup
 
 # Worktree path template (optional)

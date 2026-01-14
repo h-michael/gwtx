@@ -353,7 +353,7 @@ fn run_setup(
                 source: &repo_root.join(&expanded_link.source),
                 target: &worktree_path.join(&expanded_link.target),
                 op_type: FileOp::Link,
-                config_mode: expanded_link.on_conflict.or(config.options.on_conflict),
+                config_mode: expanded_link.on_conflict.or(config.defaults.on_conflict),
                 description: expanded_link.description.as_deref(),
             };
             process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
@@ -366,7 +366,7 @@ fn run_setup(
             source: &repo_root.join(&copy.source),
             target: &worktree_path.join(&copy.target),
             op_type: FileOp::Copy,
-            config_mode: copy.on_conflict.or(config.options.on_conflict),
+            config_mode: copy.on_conflict.or(config.defaults.on_conflict),
             description: copy.description.as_deref(),
         };
         process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
@@ -470,7 +470,7 @@ fn contains_glob_pattern(path: &Path) -> bool {
 }
 
 /// Expand a link entry with glob patterns into multiple concrete link entries.
-/// If skip_tracked is true, filter out git-tracked files.
+/// If ignore_tracked is true, filter out git-tracked files.
 fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
     let source_str = link.source.to_string_lossy();
 
@@ -489,7 +489,7 @@ fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
     let matcher = glob.compile_matcher();
 
     // Get git-tracked files if needed
-    let tracked_files: HashSet<PathBuf> = if link.skip_tracked {
+    let tracked_files: HashSet<PathBuf> = if link.ignore_tracked {
         git::list_tracked_files()?.into_iter().collect()
     } else {
         HashSet::new()
@@ -531,8 +531,8 @@ fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
             continue;
         }
 
-        // Skip if it's tracked and skip_tracked is true
-        if link.skip_tracked && tracked_files.contains(rel_path) {
+        // Skip if it's tracked and ignore_tracked is true
+        if link.ignore_tracked && tracked_files.contains(rel_path) {
             continue;
         }
 
@@ -545,7 +545,7 @@ fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
         let mut file_link = link.clone();
         file_link.source = rel_path.to_path_buf();
         file_link.target = rel_path.to_path_buf();
-        file_link.skip_tracked = false; // Already filtered, no need to check again
+        file_link.ignore_tracked = false; // Already filtered, no need to check again
         results.push(file_link);
     }
 
@@ -590,7 +590,7 @@ mod tests {
             target: PathBuf::from("test.txt"),
             on_conflict: None,
             description: None,
-            skip_tracked: false,
+            ignore_tracked: false,
         };
 
         let result = expand_link(&link, repo_root).unwrap();
@@ -615,7 +615,7 @@ mod tests {
             target: PathBuf::from("fixtures/*.txt"),
             on_conflict: None,
             description: None,
-            skip_tracked: false,
+            ignore_tracked: false,
         };
 
         let result = expand_link(&link, repo_root).unwrap();
@@ -628,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_link_skip_tracked() {
+    fn test_expand_link_ignore_tracked() {
         use tempfile::TempDir;
         let temp_dir = TempDir::new().unwrap();
         let repo_root = temp_dir.path();
@@ -687,7 +687,7 @@ mod tests {
             target: PathBuf::from("fixtures/*.txt"),
             on_conflict: None,
             description: None,
-            skip_tracked: true,
+            ignore_tracked: true,
         };
 
         let result = expand_link(&link, repo_root).unwrap();
@@ -721,7 +721,7 @@ mod tests {
             target: PathBuf::from("testdir"),
             on_conflict: None,
             description: None,
-            skip_tracked: false,
+            ignore_tracked: false,
         };
 
         let result = expand_link(&link, repo_root).unwrap();
@@ -751,7 +751,7 @@ mod tests {
             target: PathBuf::from("dir*"),
             on_conflict: None,
             description: None,
-            skip_tracked: false,
+            ignore_tracked: false,
         };
 
         let result = expand_link(&link, repo_root).unwrap();

@@ -134,14 +134,14 @@ Create `.gwtx.yaml` in your repository root. See [examples/](examples/) for vari
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
 
-options:
+defaults:
   on_conflict: backup
 ```
 
 ### Basic Configuration
 
 ```yaml
-options:
+defaults:
   on_conflict: backup  # abort, skip, overwrite, backup
 
 mkdir:
@@ -187,7 +187,7 @@ Use glob patterns in `link` operations to match multiple files:
 ```yaml
 link:
   - source: fixtures/*
-    skip_tracked: true
+    ignore_tracked: true
     description: Link untracked test fixtures
 ```
 
@@ -198,7 +198,7 @@ link:
 - `**` - matches directories recursively
 
 **Options:**
-- `skip_tracked: true` - Skip git-tracked files (useful for linking only untracked files like local configs or test data)
+- `ignore_tracked: true` - Skip git-tracked files (useful for linking only untracked files like local configs or test data)
 
 **Examples:** [examples/glob-patterns.yaml](examples/glob-patterns.yaml)
 
@@ -254,7 +254,7 @@ When a target file already exists, gwtx can:
 - `overwrite` - Replace the existing file
 - `backup` - Rename existing file to `.bak` and proceed
 
-Set globally in `options`, per-operation, or via `--on-conflict` flag.
+Set globally in `defaults`, per-operation, or via `--on-conflict` flag.
 
 ### Other Options
 
