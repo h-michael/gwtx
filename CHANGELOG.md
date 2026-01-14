@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/h-michael/gwtx/compare/v0.4.0..v0.5.0) - 2026-01-14
+
+
+- **feat**: Add trusted publishing support for crates.io - ([22fc2d4](https://github.com/h-michael/gwtx/commit/22fc2d439daa70a9e220a9956fa0ea39c8565f39))
+- **feat**: [**breaking**] Migrate configuration from TOML to YAML with JSON Schema - ([c2501c5](https://github.com/h-michael/gwtx/commit/c2501c57bde59fe1bb0dffd15ec7ff5abaea5ea0))
+- **fix**: Filter out symbolic refs from remote branch list - ([1c6000a](https://github.com/h-michael/gwtx/commit/1c6000aca2277357fe75e7b4c0ff4443be0e9c61))
+- **fix**: Reject unknown fields in YAML configuration - ([0f67c64](https://github.com/h-michael/gwtx/commit/0f67c64afa29caf0a8b9ce4e349bf7f4f05deaf2))
+- **feat**: [**breaking**] Add branch_template support for interactive branch creation - ([4d0ca0e](https://github.com/h-michael/gwtx/commit/4d0ca0edcddf5e42189e5c00b9be2e5dd6c3f10c))
+- **feat**: [**breaking**] Require double braces for template variables - ([977fcf4](https://github.com/h-michael/gwtx/commit/977fcf498e042d5090f20aca5a17d4a937431674))
+- **feat**: Add clippy lints configuration - ([d91de6f](https://github.com/h-michael/gwtx/commit/d91de6f235decb04f7ee9279669edc439f498614))
+- **fix**: Clear screen immediately when entering interactive mode - ([0bd6cae](https://github.com/h-michael/gwtx/commit/0bd6caebf771bc235cfb2d081daf6d57a162218a))
+- **refactor**: Move color options from global to per-command scope - ([5c9814f](https://github.com/h-michael/gwtx/commit/5c9814fb5f7b7ddb7ffa4c615e8245af7e2dcb7f))
 ## [0.4.0](https://github.com/h-michael/gwtx/compare/v0.3.0..v0.4.0) - 2026-01-13
 
 
