@@ -28,7 +28,7 @@ fn validate() -> Result<()> {
         return Err(Error::NotInGitRepo);
     }
 
-    let repo_root = git::repo_root()?;
+    let repo_root = git::repository_root()?;
     config::load(&repo_root)?;
 
     println!("Config is valid");

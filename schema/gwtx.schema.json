@@ -212,10 +212,16 @@
     },
     "Worktree": {
       "title": "Worktree",
-      "description": "Worktree path configuration with template variable support",
+      "description": "Worktree path and branch template configuration with template variable support",
       "type": "object",
       "properties": {
-        "path": {
+        "branch_template": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path_template": {
           "type": [
             "string",
             "null"

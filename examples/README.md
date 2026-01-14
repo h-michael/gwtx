@@ -10,7 +10,7 @@ Example configuration files for various use cases. Browse through these examples
   Demonstrates the three main operation types: `mkdir`, `link`, and `copy`. Shows conflict handling options and descriptions.
 
 - **[worktree-path.yaml](worktree-path.yaml)**
-  Examples of worktree path configuration with template variables (`{branch}`, `{repo_name}`). Useful for customizing worktree location and naming.
+  Examples of worktree path configuration with template variables (`{branch}`, `{repository}`). Useful for customizing worktree location and naming.
 
 - **[glob-patterns.yaml](glob-patterns.yaml)**
   Shows how to use glob patterns in `link` operations. Includes `skip_tracked` option for linking only untracked files.
@@ -43,7 +43,7 @@ options:
 
 # Worktree path template (optional)
 worktree:
-  path: ../worktrees/{branch}
+  path_template: ../worktrees/{branch}
 
 # Operations (all optional)
 mkdir:

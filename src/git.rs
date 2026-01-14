@@ -61,7 +61,7 @@ pub(crate) fn worktree_add(args: &AddArgs, path: &std::path::Path) -> Result<()>
 }
 
 /// Get the repository root directory.
-pub(crate) fn repo_root() -> Result<PathBuf> {
+pub(crate) fn repository_root() -> Result<PathBuf> {
     let output = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()?;
@@ -75,8 +75,8 @@ pub(crate) fn repo_root() -> Result<PathBuf> {
 }
 
 /// Get the repository name (directory name of repo root).
-pub(crate) fn repo_name() -> Result<String> {
-    let root = repo_root()?;
+pub(crate) fn repository_name() -> Result<String> {
+    let root = repository_root()?;
     root.file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())

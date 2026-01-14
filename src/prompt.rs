@@ -267,10 +267,14 @@ pub(crate) struct BranchChoice {
 }
 
 /// Prompt user to select or create a branch.
-pub(crate) fn prompt_branch_selection(
+pub(crate) fn prompt_branch_selection<F>(
     local_branches: &[String],
     remote_branches: &[String],
-) -> Result<BranchChoice> {
+    generate_suggestion: Option<F>,
+) -> Result<BranchChoice>
+where
+    F: Fn(&str) -> String,
+{
     if !is_interactive() {
         return Err(Error::NonInteractive);
     }
@@ -283,7 +287,7 @@ pub(crate) fn prompt_branch_selection(
     let mode = run_select("Branch:", choices)?;
 
     if mode == "Create new branch" {
-        prompt_new_branch_creation(local_branches, remote_branches)
+        prompt_new_branch_creation(local_branches, remote_branches, generate_suggestion)
     } else {
         // Select existing branch with fuzzy search
         if local_branches.is_empty() {
@@ -303,10 +307,14 @@ pub(crate) fn prompt_branch_selection(
 }
 
 /// Prompt the user to create a new branch with base selection.
-fn prompt_new_branch_creation(
+fn prompt_new_branch_creation<F>(
     local_branches: &[String],
     remote_branches: &[String],
-) -> Result<BranchChoice> {
+    generate_suggestion: Option<F>,
+) -> Result<BranchChoice>
+where
+    F: Fn(&str) -> String,
+{
     // Ask for the base of the new branch
     let choices = vec![
         "From local branch".to_string(),
@@ -337,8 +345,13 @@ fn prompt_new_branch_creation(
         Some(hash)
     };
 
-    // Finally, ask for the new branch name
-    let branch_name = read_line("New branch name:", None)?;
+    // Generate suggestion based on selected base
+    let suggestion = base_commitish
+        .as_ref()
+        .and_then(|base| generate_suggestion.as_ref().map(|f| f(base)));
+
+    // Finally, ask for the new branch name with suggestion
+    let branch_name = read_line("New branch name:", suggestion.as_deref())?;
 
     Ok(BranchChoice {
         branch: branch_name,

@@ -7,7 +7,7 @@ use std::io::IsTerminal;
 pub(crate) fn run(args: TrustArgs) -> Result<()> {
     let repo_root = match args.path {
         Some(p) => p.canonicalize()?,
-        None => git::repo_root()?,
+        None => git::repository_root()?,
     };
 
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {

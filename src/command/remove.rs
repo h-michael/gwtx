@@ -17,7 +17,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
         return Err(Error::NotInGitRepo);
     }
 
-    let repo_root = git::repo_root()?;
+    let repo_root = git::repository_root()?;
 
     // Initial config load for trust check
     let initial_config = config::load(&repo_root)?.unwrap_or_default();
