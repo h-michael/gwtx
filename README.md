@@ -26,6 +26,27 @@ cargo install gwtx
 
 See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub Releases).
 
+## Quick Start
+
+1.  **Install `gwtx`**: Follow the instructions in the [Installation](#installation) section.
+2.  **Create `.gwtx.yaml`**: In your repository root, create a `.gwtx.yaml` file to define your worktree setup.
+    ```yaml
+    # .gwtx.yaml example
+    mkdir:
+      - path: build
+        description: Build output directory
+    link:
+      - source: .env.local
+        description: Local environment variables
+    ```
+3.  **Add a worktree**: Use `gwtx add` to create a new worktree with the defined setup.
+    ```bash
+    gwtx add ../my-feature-worktree
+    ```
+    This will create a new worktree at `../my-feature-worktree` and apply the `mkdir` and `link` operations defined in `.gwtx.yaml`.
+
+For comprehensive details on all commands, options, and configuration, please refer to the CLI's built-in help (`gwtx --help` and `gwtx <subcommand> --help`) and `man` pages (`gwtx man`).
+
 ## Usage
 
 ### Creating Worktrees
@@ -171,7 +192,7 @@ Configure default worktree path with template variables:
 
 ```yaml
 worktree:
-  path: ../worktrees/{branch}
+  path_template: ../worktrees/{branch}
 ```
 
 **Template variables:**
