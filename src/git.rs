@@ -256,7 +256,7 @@ fn parse_worktree_list(bytes: &[u8]) -> Result<Vec<WorktreeInfo>> {
 }
 
 /// Working tree status information.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct WorktreeStatus {
     pub has_uncommitted_changes: bool,
     pub modified_count: usize,
@@ -313,7 +313,7 @@ fn parse_status_output(bytes: &[u8]) -> Result<WorktreeStatus> {
 }
 
 /// Unpushed commits information.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct UnpushedCommits {
     pub has_unpushed: bool,
     pub count: usize,

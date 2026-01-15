@@ -200,15 +200,15 @@ impl ConflictOption {
         Self::BackupAll,
     ];
 
-    fn label(self) -> &'static str {
+    fn label(&self) -> &'static str {
         match self {
-            Self::Abort => "abort - stop the entire operation",
-            Self::Skip => "skip - skip this file",
-            Self::SkipAll => "skip all - skip all conflicts",
-            Self::Overwrite => "overwrite - overwrite this file",
-            Self::OverwriteAll => "overwrite all - overwrite all conflicts",
-            Self::Backup => "backup - backup existing and overwrite",
-            Self::BackupAll => "backup all - backup all conflicts",
+            Self::Abort => "abort (cancel the entire operation)",
+            Self::Skip => "skip (do not touch the existing file)",
+            Self::SkipAll => "skip all (skip all future conflicts)",
+            Self::Overwrite => "overwrite (deletes the existing file)",
+            Self::OverwriteAll => "overwrite all (overwrite all future conflicts)",
+            Self::Backup => "backup (renames existing to *.bak)",
+            Self::BackupAll => "backup all (backup all future conflicts)",
         }
     }
 
@@ -261,8 +261,8 @@ pub(crate) fn prompt_conflict_with_all(target: &Path) -> Result<ConflictChoice> 
         .map(|o| o.label().to_string())
         .collect();
 
-    let message = format!("{} already exists in worktree.", target.display());
-    let selection = run_select_with_message("Choose how to proceed:", &message, choices)?;
+    let message = format!("Conflict: '{}' already exists.", target.display());
+    let selection = run_select_with_message("How should gwtx proceed?", &message, choices)?;
 
     let option = ConflictOption::from_label(&selection).unwrap_or(ConflictOption::Abort);
 

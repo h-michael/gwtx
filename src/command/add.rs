@@ -112,7 +112,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         let source = repo_root.join(&link.source);
         if !source.exists() {
             return Err(Error::SourceNotFound {
-                path: link.source.clone(),
+                path: link.source.to_string_lossy().to_string(),
             });
         }
     }
@@ -120,7 +120,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         let source = repo_root.join(&copy.source);
         if !source.exists() {
             return Err(Error::SourceNotFound {
-                path: copy.source.clone(),
+                path: copy.source.to_string_lossy().to_string(),
             });
         }
     }
