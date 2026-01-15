@@ -26,13 +26,13 @@ COLOR OUTPUT:
     Priority: --color flag > NO_COLOR env > terminal detection
 
 EXAMPLES:
-    gwtx add ../feature-branch
+    gwtx add ../new-worktree-path
         Create worktree and run setup from .gwtx.yaml
 
-    gwtx add -b new-feature ../new-feature
+    gwtx add -b new-branch-name ../new-worktree-path
         Create new branch and worktree with setup
 
-    gwtx add --interactive
+    gwtx add --i
         Select branch and path interactively
 
     gwtx add --dry-run ../test
@@ -41,10 +41,10 @@ EXAMPLES:
     gwtx add --no-setup ../quick
         Create worktree without running setup
 
-    gwtx remove ../feature-branch
+    gwtx remove ../worktree-path
         Remove worktree with safety checks
 
-    gwtx remove --interactive
+    gwtx remove --i
         Select worktrees to remove interactively
 
     gwtx remove --dry-run ../test
@@ -198,16 +198,30 @@ pub(crate) enum ConfigCommand {
 /// Arguments for the `add` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-INTERACTIVE MODE KEYBINDINGS:
-    Navigation    ↑/↓, Ctrl+n/p
-    Select        Enter, Ctrl+j
-    Cancel        Esc, Ctrl+c
+EXAMPLES:
+    gwtx add ../new-worktree-path
+        Create worktree and run setup from .gwtx.yaml
+
+    gwtx add -b new-branch-name ../new-worktree-path
+        Create new branch and worktree with setup
+
+    gwtx add --interactive
+        Select branch and path interactively
+
+    gwtx add --dry-run ../test
+        Preview what would be done without executing
+
+    gwtx add --no-setup ../quick
+        Create worktree without running setup
 
 CONFLICT MODES:
     abort      Stop immediately when a conflict is found (default in non-interactive)
     skip       Skip the conflicting file and continue
     overwrite  Replace the existing file
-    backup     Rename existing file with .bak suffix before creating new one")]
+    backup     Rename existing file with .bak suffix before creating new one
+
+ENVIRONMENT VARIABLES:
+    GWTX_ON_CONFLICT    Default conflict resolution mode (e.g., GWTX_ON_CONFLICT=backup)")]
 pub(crate) struct AddArgs {
     /// Path for the new worktree (required unless --interactive)
     pub path: Option<PathBuf>,
@@ -221,7 +235,12 @@ pub(crate) struct AddArgs {
     pub interactive: bool,
 
     /// How to handle conflicts: abort, skip, overwrite, backup
-    #[arg(long, value_name = "MODE", help_heading = "gwtx Options")]
+    #[arg(
+        long,
+        value_name = "MODE",
+        help_heading = "gwtx Options",
+        env = "GWTX_ON_CONFLICT"
+    )]
     pub on_conflict: Option<OnConflictArg>,
 
     /// Preview actions without executing
@@ -304,11 +323,18 @@ pub(crate) struct AddArgs {
 /// Arguments for the `remove` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
-INTERACTIVE MODE KEYBINDINGS:
-    Navigation    ↑/↓, Ctrl+n/p
-    Toggle        Space
-    Confirm       Enter
-    Cancel        Esc, Ctrl+c
+EXAMPLES:
+    gwtx remove ../target-worktree-path
+        Remove worktree with safety checks
+
+    gwtx remove --i
+        Select worktrees to remove interactively
+
+    gwtx remove --dry-run ../target-worktree-path
+        Preview what would be removed without executing
+
+    gwtx remove --force ../target-worktree-path
+        Force removal (skip safety checks and confirmation)
 
 SAFETY CHECKS:
     By default, gwtx remove warns about:
@@ -386,12 +412,12 @@ pub(crate) struct ListArgs {
         long,
         value_name = "WHEN",
         default_value = "auto",
-        conflicts_with = "no_color"
+        conflicts_with = "no_color",
+        help_heading = "Shared Options"
     )]
     pub color: clap::ColorChoice,
-
     /// Disable colored output (equivalent to --color=never)
-    #[arg(long)]
+    #[arg(long, help_heading = "Shared Options")]
     pub no_color: bool,
 }
 
