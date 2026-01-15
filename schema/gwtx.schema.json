@@ -10,6 +10,9 @@
         "$ref": "#/$defs/CopyEntry"
       }
     },
+    "defaults": {
+      "$ref": "#/$defs/Defaults"
+    },
     "hooks": {
       "$ref": "#/$defs/Hooks"
     },
@@ -24,9 +27,6 @@
       "items": {
         "$ref": "#/$defs/MkdirEntry"
       }
-    },
-    "options": {
-      "$ref": "#/$defs/Options"
     },
     "worktree": {
       "$ref": "#/$defs/Worktree"
@@ -63,6 +63,24 @@
           "type": [
             "string",
             "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Defaults": {
+      "title": "Defaults",
+      "description": "Global defaults for all operations",
+      "type": "object",
+      "properties": {
+        "on_conflict": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OnConflict"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },
@@ -136,6 +154,10 @@
             "null"
           ]
         },
+        "ignore_tracked": {
+          "type": "boolean",
+          "default": false
+        },
         "on_conflict": {
           "anyOf": [
             {
@@ -145,10 +167,6 @@
               "type": "null"
             }
           ]
-        },
-        "skip_tracked": {
-          "type": "boolean",
-          "default": false
         },
         "source": {
           "type": "string",
@@ -191,24 +209,6 @@
         "overwrite",
         "backup"
       ]
-    },
-    "Options": {
-      "title": "Options",
-      "description": "Global options for all operations",
-      "type": "object",
-      "properties": {
-        "on_conflict": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/OnConflict"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "additionalProperties": false
     },
     "Worktree": {
       "title": "Worktree",

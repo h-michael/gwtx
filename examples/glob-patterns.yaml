@@ -23,7 +23,7 @@
 # 4. Build caches and temporary files
 #    - Link specific cache files to save disk space and build time
 #
-# The skip_tracked option is especially powerful because:
+# The ignore_tracked option is especially powerful because:
 #    - Keeps git status clean (linked files don't show as untracked)
 #    - Automatically distinguishes personal files from team-shared files
 #    - Works seamlessly with .gitignore settings
@@ -35,7 +35,7 @@ link:
 
   # Example 2: Skip git-tracked files (useful for test fixtures)
   - source: fixtures/*
-    skip_tracked: true
+    ignore_tracked: true
     description: Link only untracked test fixtures (skips .gitkeep, etc.)
 
   # Example 3: Link files with specific extension
@@ -44,7 +44,7 @@ link:
 
   # Example 4: Link dotfiles
   - source: .*
-    skip_tracked: true
+    ignore_tracked: true
     description: Link untracked dotfiles in repo root
 
   # Example 5: Recursive glob pattern
@@ -53,11 +53,11 @@ link:
 
   # Example 6: Multiple patterns for different purposes
   - source: test/fixtures/*.txt
-    skip_tracked: true
+    ignore_tracked: true
     description: Link text fixtures
 
   - source: test/fixtures/*.json
-    skip_tracked: true
+    ignore_tracked: true
     description: Link JSON fixtures
 
 # Supported glob syntax:
@@ -66,6 +66,6 @@ link:
 #   [...]   - matches any character in the brackets
 #   **      - matches zero or more directories (recursive)
 #
-# Note: skip_tracked option is useful when you want to:
+# Note: ignore_tracked option is useful when you want to:
 # - Link only untracked files (e.g., local configs, test data)
 # - Keep git status clean by not linking git-tracked files

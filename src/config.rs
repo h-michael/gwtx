@@ -39,8 +39,8 @@ pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
     description = "Configuration file for gwtx (git worktree extra)"
 )]
 pub(crate) struct RawConfig {
-    #[serde(default)]
-    options: RawOptions,
+    #[serde(default, rename = "defaults")]
+    defaults: RawDefaults,
     #[serde(default)]
     worktree: RawWorktree,
     #[serde(default)]
@@ -56,11 +56,11 @@ pub(crate) struct RawConfig {
 #[derive(Debug, Deserialize, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(
-    rename = "Options",
-    title = "Options",
-    description = "Global options for all operations"
+    rename = "Defaults",
+    title = "Defaults",
+    description = "Global defaults for all operations"
 )]
-struct RawOptions {
+struct RawDefaults {
     on_conflict: Option<OnConflict>,
 }
 
@@ -134,7 +134,7 @@ struct RawLink {
     on_conflict: Option<OnConflict>,
     description: Option<String>,
     #[serde(default)]
-    skip_tracked: bool,
+    ignore_tracked: bool,
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
@@ -157,7 +157,7 @@ struct RawCopy {
 /// Root configuration from .gwtx.yaml.
 #[derive(Debug, Default)]
 pub(crate) struct Config {
-    pub options: Options,
+    pub defaults: Defaults,
     pub worktree: Worktree,
     pub hooks: Hooks,
     pub mkdir: Vec<Mkdir>,
@@ -237,7 +237,7 @@ impl TryFrom<RawConfig> for Config {
                 target,
                 on_conflict: raw_link.on_conflict,
                 description: raw_link.description,
-                skip_tracked: raw_link.skip_tracked,
+                ignore_tracked: raw_link.ignore_tracked,
             });
         }
 
@@ -286,8 +286,8 @@ impl TryFrom<RawConfig> for Config {
         }
 
         Ok(Config {
-            options: Options {
-                on_conflict: raw.options.on_conflict,
+            defaults: Defaults {
+                on_conflict: raw.defaults.on_conflict,
             },
             worktree: Worktree {
                 path_template: raw.worktree.path_template,
@@ -335,7 +335,7 @@ fn validate_path(path: &Path) -> Option<String> {
 
 /// Global options.
 #[derive(Debug, Default)]
-pub(crate) struct Options {
+pub(crate) struct Defaults {
     pub on_conflict: Option<OnConflict>,
 }
 
@@ -548,7 +548,7 @@ pub(crate) struct Link {
     pub target: PathBuf, // Always resolved (no Option)
     pub on_conflict: Option<OnConflict>,
     pub description: Option<String>,
-    pub skip_tracked: bool,
+    pub ignore_tracked: bool,
 }
 
 /// File copy configuration entry.
@@ -595,7 +595,7 @@ link:
     #[test]
     fn test_parse_full_config() {
         let yaml = r#"
-options:
+defaults:
   on_conflict: skip
 
 mkdir:
@@ -618,7 +618,7 @@ copy:
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
 
-        assert_eq!(config.options.on_conflict, Some(OnConflict::Skip));
+        assert_eq!(config.defaults.on_conflict, Some(OnConflict::Skip));
 
         assert_eq!(config.mkdir.len(), 1);
         assert_eq!(config.mkdir[0].path, PathBuf::from("tmp/cache"));
@@ -773,9 +773,9 @@ link:
     }
 
     #[test]
-    fn test_deny_unknown_fields_in_options() {
+    fn test_deny_unknown_fields_in_defaults() {
         let yaml = r#"
-options:
+defaults:
   invalid_option: true
   on_conflict: skip
         "#;

@@ -8,5 +8,5 @@
 # You can add operations as needed.
 
 # Uncomment to set global conflict handling
-# options:
+# defaults:
 #   on_conflict: backup  # abort, skip, overwrite, backup
