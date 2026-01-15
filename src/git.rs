@@ -348,6 +348,7 @@ pub(crate) fn worktree_unpushed_commits(
 }
 
 fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<UnpushedCommits> {
+    // Get the current branch name
     let branch_output = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(worktree_path)
@@ -365,13 +366,33 @@ fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<Unpu
         .to_string();
 
     if branch == "HEAD" {
+        // Detached HEAD, no upstream to check against
         return Ok(UnpushedCommits {
             has_unpushed: false,
             count: 0,
         });
     }
 
-    let remote_ref = format!("origin/{}", branch);
+    // Get the remote for the current branch
+    let remote_output = Command::new("git")
+        .args(["config", "--get", &format!("branch.{}.remote", branch)])
+        .current_dir(worktree_path)
+        .output()?;
+
+    if !remote_output.status.success() {
+        // No remote configured for this branch
+        return Ok(UnpushedCommits {
+            has_unpushed: false,
+            count: 0,
+        });
+    }
+
+    let remote = String::from_utf8_lossy(&remote_output.stdout)
+        .trim()
+        .to_string();
+
+    // Now check if the remote branch exists before logging
+    let remote_ref = format!("{}/{}", remote, branch);
     let check = Command::new("git")
         .args(["rev-parse", "--verify", &remote_ref])
         .current_dir(worktree_path)
@@ -385,12 +406,33 @@ fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<Unpu
         });
     }
 
+    // Finally, check for unpushed commits against the dynamic remote ref
     let output = Command::new("git")
         .args(["log", "--oneline", &format!("{}..HEAD", remote_ref)])
         .current_dir(worktree_path)
         .output()?;
 
     parse_log_output(&output.stdout)
+}
+
+/// Get the upstream branch name for the current branch in a worktree.
+pub(crate) fn get_upstream_branch(worktree_path: &std::path::Path) -> Result<Option<String>> {
+    let upstream = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "@{upstream}"])
+        .current_dir(worktree_path)
+        .output()?;
+
+    if !upstream.status.success() {
+        // This fails if no upstream is configured, which is a valid case.
+        return Ok(None);
+    }
+
+    let upstream_name = String::from_utf8_lossy(&upstream.stdout).trim().to_string();
+    if upstream_name.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(upstream_name))
+    }
 }
 
 fn parse_log_output(bytes: &[u8]) -> Result<UnpushedCommits> {

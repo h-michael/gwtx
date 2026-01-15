@@ -11,6 +11,7 @@ struct DisplayWorktree {
     head: String,
     status: WorktreeStatus,
     unpushed: UnpushedCommits,
+    upstream: Option<String>,
     is_locked: bool,
 }
 
@@ -62,6 +63,7 @@ fn enrich_worktrees(worktrees: &[WorktreeInfo]) -> Result<Vec<DisplayWorktree>> 
         // Get status and unpushed commits (best effort)
         let status = git::worktree_status(&wt.path).unwrap_or_default();
         let unpushed = git::worktree_unpushed_commits(&wt.path).unwrap_or_default();
+        let upstream = git::get_upstream_branch(&wt.path).unwrap_or(None);
 
         display_data.push(DisplayWorktree {
             path: wt.path.display().to_string(),
@@ -69,6 +71,7 @@ fn enrich_worktrees(worktrees: &[WorktreeInfo]) -> Result<Vec<DisplayWorktree>> 
             head: wt.head.clone(),
             status,
             unpushed,
+            upstream,
             is_locked: wt.is_locked,
         });
     }
@@ -102,7 +105,7 @@ fn display_worktree(
     color: ColorConfig,
 ) {
     let short_hash = wt.head.chars().take(7).collect::<String>();
-    let status_str = format_status(&wt.status, &wt.unpushed, wt.is_locked);
+    let status_str = format_status(&wt.status, &wt.unpushed, &wt.upstream, wt.is_locked);
 
     let line = if color.is_enabled() {
         format!(
@@ -140,6 +143,7 @@ fn branch_display(branch: &Option<String>) -> String {
 fn format_status(
     status: &crate::git::WorktreeStatus,
     unpushed: &crate::git::UnpushedCommits,
+    upstream: &Option<String>,
     is_locked: bool,
 ) -> String {
     let mut parts = Vec::new();
@@ -160,7 +164,12 @@ fn format_status(
     }
 
     if unpushed.has_unpushed {
-        parts.push(format!("unpushed: {}", unpushed.count));
+        let unpushed_str = if let Some(upstream_name) = upstream {
+            format!("unpushed: {} (vs {})", unpushed.count, upstream_name)
+        } else {
+            format!("unpushed: {}", unpushed.count)
+        };
+        parts.push(unpushed_str);
     }
 
     if is_locked {
@@ -204,10 +213,11 @@ mod tests {
             has_unpushed: true,
             count: 5,
         };
-        let result = format_status(&status, &unpushed, true);
+        let upstream = Some("origin/main".to_string());
+        let result = format_status(&status, &unpushed, &upstream, true);
         assert_eq!(
             result,
-            "modified, deleted, untracked | unpushed: 5 | locked"
+            "modified, deleted, untracked | unpushed: 5 (vs origin/main) | locked"
         );
     }
 
@@ -225,7 +235,7 @@ mod tests {
             has_unpushed: false,
             count: 0,
         };
-        let result = format_status(&status, &unpushed, false);
+        let result = format_status(&status, &unpushed, &None, false);
         assert_eq!(result, "up to date");
     }
 }
