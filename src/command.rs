@@ -9,6 +9,7 @@ mod remove;
 mod schema;
 mod switch;
 mod trust;
+mod trust_check;
 mod untrust;
 
 pub(crate) use add::run as add;
