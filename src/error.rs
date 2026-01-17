@@ -112,6 +112,9 @@ pub(crate) enum Error {
     #[error("Trust file serialization failed: {message}")]
     TrustFileSerialization { message: String },
 
+    #[error("Trust verification failed: {message}")]
+    TrustVerificationFailed { message: String },
+
     #[error("Config file not found: {path}")]
     ConfigNotFound { path: PathBuf },
 

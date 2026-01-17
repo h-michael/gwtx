@@ -34,6 +34,7 @@ use crate::config::Hooks;
 use crate::error::{Error, Result};
 
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -67,7 +68,7 @@ fn trust_dir() -> Result<PathBuf> {
 
 /// Compute SHA256 hash of hooks configuration.
 ///
-/// Combines the primary worktree path and all hook commands/descriptions into a single
+/// Combines the main worktree path and all hook commands/descriptions into a single
 /// hash. This hash is used as the trust file identifier. If either the path or any hook
 /// content changes, the hash changes, requiring re-trust.
 ///
@@ -75,30 +76,33 @@ fn trust_dir() -> Result<PathBuf> {
 /// - Canonicalized main_worktree_path (prevents different path representations)
 /// - Hook commands and descriptions from all phases (pre_add, post_add, pre_remove, post_remove)
 ///
-/// Returns the hash as a lowercase hex string.
+/// **Stability**: Uses explicit JSON serialization to ensure the hash remains stable
+/// across Rust compiler versions. Debug trait output format isn't guaranteed stable,
+/// so we use JSON's stable text representation instead.
+///
+/// Returns the hash as a lowercase hex string (64 hex characters for SHA256).
 pub(crate) fn compute_hash(main_worktree_path: &Path, hooks: &Hooks) -> Result<String> {
     let mut hasher = Sha256::new();
 
-    let canonical_path = main_worktree_path
-        .canonicalize()
-        .unwrap_or_else(|_| main_worktree_path.to_path_buf());
+    // Canonicalize to ensure stable representation across systems
+    let canonical_path =
+        main_worktree_path
+            .canonicalize()
+            .map_err(|e| Error::TrustVerificationFailed {
+                message: format!("Failed to canonicalize worktree path: {}", e),
+            })?;
 
-    hasher.update(canonical_path.to_string_lossy().as_bytes());
+    // Use JSON serialization for stable, version-independent format
+    // Serialize: { path: "...", hooks: { pre_add: [...], post_add: [...], ... } }
+    let path_str = canonical_path.to_string_lossy();
+    hasher.update(path_str.as_bytes());
     hasher.update(b"\n");
 
-    for entry in &hooks.pre_add {
-        hasher.update(format!("pre_add:{}:{:?}\n", entry.command, entry.description).as_bytes());
-    }
-    for entry in &hooks.post_add {
-        hasher.update(format!("post_add:{}:{:?}\n", entry.command, entry.description).as_bytes());
-    }
-    for entry in &hooks.pre_remove {
-        hasher.update(format!("pre_remove:{}:{:?}\n", entry.command, entry.description).as_bytes());
-    }
-    for entry in &hooks.post_remove {
-        hasher
-            .update(format!("post_remove:{}:{:?}\n", entry.command, entry.description).as_bytes());
-    }
+    // Serialize hooks as JSON for stable representation
+    let hooks_json = serde_json::to_string(hooks).map_err(|e| Error::TrustFileSerialization {
+        message: format!("Failed to serialize hooks: {}", e),
+    })?;
+    hasher.update(hooks_json.as_bytes());
 
     Ok(format!("{:x}", hasher.finalize()))
 }
@@ -139,28 +143,38 @@ fn main_worktree_dir_name(path: &Path) -> String {
 /// 2. Trust file exists but main_worktree_path doesn't match (symlink attack protection)
 /// 3. Trust file is corrupted
 ///
-/// The second check (path verification) prevents symlink attacks where an attacker could
-/// replace the worktree with a symlink to a different location containing old trusted hooks.
+/// **TOCTOU Safety**: Directly attempts to read the file without pre-checking existence.
+/// "File not found" errors are treated as Ok(false) for atomicity. If the file is deleted
+/// between check and read, we get the correct result (not trusted).
+///
+/// **Path Verification**: Prevents symlink attacks where an attacker could replace the
+/// worktree with a symlink to a different location containing old trusted hooks.
 pub(crate) fn is_trusted(main_worktree_path: &Path, hooks: &Hooks) -> Result<bool> {
     if !hooks.has_hooks() {
         return Ok(true); // No hooks = implicitly trusted
     }
 
-    let canonical_path = main_worktree_path
-        .canonicalize()
-        .unwrap_or_else(|_| main_worktree_path.to_path_buf());
+    // Canonicalize path - fail if it doesn't exist, ensuring consistent behavior
+    let canonical_path =
+        main_worktree_path
+            .canonicalize()
+            .map_err(|e| Error::TrustVerificationFailed {
+                message: format!("Failed to canonicalize worktree path: {}", e),
+            })?;
 
     let hash = compute_hash(&canonical_path, hooks)?;
     let dir_name = main_worktree_dir_name(&canonical_path);
     let trust_file = trust_dir()?.join(&dir_name).join(format!("{}.yaml", hash));
 
-    if !trust_file.exists() {
-        return Ok(false);
-    }
+    // TOCTOU-safe: Attempt to read file directly instead of checking existence first.
+    // If file is deleted between our check and read, we get correct result (not trusted).
+    let content = match fs::read_to_string(&trust_file) {
+        Ok(content) => content,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
 
-    // TOCTOU-safe: Verify stored main_worktree_path matches current path.
-    // Prevents symlink attacks where directory is replaced between check and execution.
-    let content = fs::read_to_string(&trust_file)?;
+    // Verify stored main_worktree_path matches current path
     let entry: TrustEntry =
         serde_yaml::from_str(&content).map_err(|e| Error::TrustFileCorrupted {
             message: e.to_string(),
@@ -194,9 +208,13 @@ pub(crate) fn trust(main_worktree_path: &Path, hooks: &Hooks) -> Result<()> {
         return Ok(());
     }
 
-    let canonical_path = main_worktree_path
-        .canonicalize()
-        .unwrap_or_else(|_| main_worktree_path.to_path_buf());
+    // Canonicalize path - fail if it doesn't exist
+    let canonical_path =
+        main_worktree_path
+            .canonicalize()
+            .map_err(|e| Error::TrustVerificationFailed {
+                message: format!("Failed to canonicalize worktree path: {}", e),
+            })?;
 
     let trust_base_path = trust_dir()?;
     let dir_name = main_worktree_dir_name(&canonical_path);
@@ -242,9 +260,13 @@ pub(crate) fn untrust(main_worktree_path: &Path, hooks: &Hooks) -> Result<bool> 
         return Ok(false);
     }
 
-    let canonical_path = main_worktree_path
-        .canonicalize()
-        .unwrap_or_else(|_| main_worktree_path.to_path_buf());
+    // Canonicalize path - fail if it doesn't exist
+    let canonical_path =
+        main_worktree_path
+            .canonicalize()
+            .map_err(|e| Error::TrustVerificationFailed {
+                message: format!("Failed to canonicalize worktree path: {}", e),
+            })?;
 
     let hash = compute_hash(&canonical_path, hooks)?;
     let dir_name = main_worktree_dir_name(&canonical_path);
@@ -266,6 +288,7 @@ pub(crate) fn untrust(main_worktree_path: &Path, hooks: &Hooks) -> Result<bool> 
 /// a different trusted hook configuration.
 ///
 /// Returns an empty vector if no trust files exist.
+/// Logs warnings to stderr for corrupted or unreadable files, but continues processing.
 pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
     let trust_path = trust_dir()?;
 
@@ -280,9 +303,23 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
             for file_entry in fs::read_dir(&dir_path)?.flatten() {
                 let file_path = file_entry.path();
                 if file_path.extension().is_some_and(|e| e == "yaml") {
-                    if let Ok(content) = fs::read_to_string(&file_path) {
-                        if let Ok(trust_entry) = serde_yaml::from_str::<TrustEntry>(&content) {
-                            entries.push(trust_entry);
+                    match fs::read_to_string(&file_path) {
+                        Ok(content) => match serde_yaml::from_str::<TrustEntry>(&content) {
+                            Ok(trust_entry) => entries.push(trust_entry),
+                            Err(e) => {
+                                eprintln!(
+                                    "Warning: Failed to parse trust file: {}\n         Error: {}",
+                                    file_path.display(),
+                                    e
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!(
+                                "Warning: Failed to read trust file: {}\n         Error: {}",
+                                file_path.display(),
+                                e
+                            );
                         }
                     }
                 }
