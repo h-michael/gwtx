@@ -190,6 +190,14 @@ pub(crate) fn run_post_remove(
     Ok(())
 }
 
+/// Display dry-run output for hook entries.
+pub(crate) fn dry_run_hooks(hook_type: &str, entries: &[HookEntry], output: &Output) {
+    for entry in entries {
+        let display = entry.description.as_deref().unwrap_or(&entry.command);
+        output.dry_run(&format!("Would run {} hook: {}", hook_type, display));
+    }
+}
+
 /// Display a list of hook entries with optional color formatting.
 fn display_hook_entries(entries: &[HookEntry], hook_type: &str, use_color: bool) {
     if entries.is_empty() {
