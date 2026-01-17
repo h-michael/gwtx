@@ -157,10 +157,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     if !config.hooks.pre_add.is_empty() {
         if args.dry_run {
             if !args.quiet {
-                for entry in &config.hooks.pre_add {
-                    let display = entry.description.as_deref().unwrap_or(&entry.command);
-                    output.dry_run(&format!("Would run pre_add hook: {}", display));
-                }
+                hook::dry_run_hooks("pre_add", &config.hooks.pre_add, &output);
             }
         } else {
             hook::run_pre_add(&config.hooks, &hook_env, &repo_root, &output)?;
@@ -194,10 +191,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     if !config.hooks.post_add.is_empty() {
         if args.dry_run {
             if !args.quiet {
-                for entry in &config.hooks.post_add {
-                    let display = entry.description.as_deref().unwrap_or(&entry.command);
-                    output.dry_run(&format!("Would run post_add hook: {}", display));
-                }
+                hook::dry_run_hooks("post_add", &config.hooks.post_add, &output);
             }
         } else if let Err(e) = hook::run_post_add(&config.hooks, &hook_env, &worktree_path, &output)
         {
