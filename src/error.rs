@@ -52,11 +52,20 @@ pub(crate) enum Error {
     #[error("Selector error: {message}")]
     Selector { message: String },
 
-    #[error("The primary worktree cannot be removed.\n  Path: {}", .path.display())]
+    #[error("Interactive prompt required for {command}")]
+    InteractiveRequired { command: &'static str },
+
+    #[error("gwtx switch requires shell integration")]
+    SwitchRequiresShellIntegration,
+
+    #[error("The main worktree cannot be removed.\n  Path: {}", .path.display())]
     CannotRemoveMainWorktree { path: PathBuf },
 
     #[error("No worktrees available to remove")]
     NoWorktreesToRemove,
+
+    #[error("No worktrees found")]
+    NoWorktreesFound,
 
     #[error("Worktree has uncommitted changes: {}\n  Use --force to remove anyway.", .path.display())]
     WorktreeHasUncommittedChanges { path: PathBuf },
@@ -76,8 +85,13 @@ pub(crate) enum Error {
     )]
     WindowsSymlinkPermission,
 
+    // Empty message: detailed warning is displayed by trust command
     #[error("")]
     HooksNotTrusted,
+
+    // Empty message: silent exit for --check flag (returns exit code 1)
+    #[error("")]
+    TrustCheckFailed,
 
     #[error("Hook execution failed: {command}\n  {cause}")]
     HookExecutionFailed { command: String, cause: String },
@@ -98,8 +112,14 @@ pub(crate) enum Error {
     #[error("Trust file serialization failed: {message}")]
     TrustFileSerialization { message: String },
 
+    #[error("Trust verification failed: {message}")]
+    TrustVerificationFailed { message: String },
+
     #[error("Config file not found: {path}")]
     ConfigNotFound { path: PathBuf },
+
+    #[error("No hooks defined in .gwtx.yaml")]
+    NoHooksDefined,
 
     #[cfg(windows)]
     #[error(

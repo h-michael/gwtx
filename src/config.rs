@@ -516,7 +516,7 @@ fn expand_branch_variable(var: &str, env: &BranchTemplateEnv) -> String {
 }
 
 /// Hook commands configuration.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub(crate) struct Hooks {
     pub pre_add: Vec<HookEntry>,
     pub post_add: Vec<HookEntry>,

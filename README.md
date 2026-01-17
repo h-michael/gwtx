@@ -28,8 +28,7 @@ See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub R
 
 ## Quick Start
 
-1.  **Install `gwtx`**: Follow the instructions in the [Installation](#installation) section.
-2.  **Create `.gwtx.yaml`**: In your repository root, create a `.gwtx.yaml` file to define your worktree setup.
+1.  **Create `.gwtx.yaml`**: In your repository root, create a `.gwtx.yaml` file to define your worktree setup.
     ```yaml
     # .gwtx.yaml example
     mkdir:
@@ -39,7 +38,7 @@ See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub R
       - source: .env.local
         description: Local environment variables
     ```
-3.  **Add a worktree**: Use `gwtx add` to create a new worktree with the defined setup.
+2.  **Add a worktree**: Use `gwtx add` to create a new worktree with the defined setup.
     ```bash
     gwtx add ../my-feature-worktree
     ```
@@ -49,7 +48,7 @@ For comprehensive details on all commands, options, and configuration, please re
 
 ## Usage
 
-### Creating Worktrees
+### Creating new worktrees
 
 ```bash
 # Create a worktree with setup
@@ -65,7 +64,7 @@ gwtx add --interactive
 gwtx add --dry-run ../test
 ```
 
-### Listing Worktrees
+### Listing worktrees
 
 ```bash
 # List all worktrees with detailed information (branch, commit hash, status)
@@ -85,7 +84,7 @@ gwtx ls -p
 
 Note: Use `git status` in the worktree directory for detailed status information.
 
-### Removing Worktrees
+### Removing worktrees
 
 ```bash
 # Remove a worktree with safety checks
@@ -114,7 +113,21 @@ By default, `gwtx remove` warns about:
 
 Use `--force` to bypass all checks and confirmation prompts.
 
-### Configuration Commands
+### Switching to selected worktree
+
+```bash
+# Interactively select and switch to a worktree
+gwtx switch
+
+# Or get worktree path for scripting (works without shell integration)
+cd "$(gwtx path)"
+```
+
+**`gwtx switch`**: **Requires shell integration** (`gwtx init` - see [Shell Integration](#shell-integration) section). Displays an interactive fuzzy finder (on Unix) or selection menu (on Windows) and automatically changes to the selected worktree. If shell integration is not enabled, the command will display a helpful error message with setup instructions.
+
+**`gwtx path`**: Prints the selected worktree path to stdout. Works without shell integration. Useful for scripting or as a fallback.
+
+### Configuration commands
 
 ```bash
 # Show config format help
@@ -124,7 +137,7 @@ gwtx config
 gwtx config validate
 ```
 
-### Hooks (Trust Required)
+### Hooks (trust required)
 
 Hooks allow you to run custom commands before/after worktree operations:
 
@@ -135,6 +148,9 @@ gwtx trust
 # Show hooks without trusting
 gwtx trust --show
 
+# Check trust status (exit 0 if trusted, 1 if untrusted)
+gwtx trust --check
+
 # Revoke trust
 gwtx untrust
 
@@ -143,6 +159,42 @@ gwtx untrust --list
 ```
 
 **Security:** For security, hooks require explicit trust via `gwtx trust` before execution. See [Hooks Configuration](#hooks) below.
+
+## Shell Integration
+
+**Optional feature.** Shell integration is not required for basic gwtx functionality (`add`, `remove`, `list`, `path`, etc.). It only adds quality-of-life improvements.
+
+To enable shell completions and automatic hook trust warnings, add the following to your shell configuration:
+
+**Bash** (`~/.bashrc`):
+```bash
+eval "$(gwtx init bash)"
+```
+
+**Zsh** (`~/.zshrc`):
+```zsh
+eval "$(gwtx init zsh)"
+```
+
+**Fish** (`~/.config/fish/config.fish`):
+```fish
+gwtx init fish | source
+```
+
+**PowerShell** (profile):
+```powershell
+Invoke-Expression (& gwtx init powershell | Out-String)
+```
+
+**Elvish** (`~/.config/elvish/rc.elv`):
+```elvish
+eval (gwtx init elvish | slurp)
+```
+
+Shell integration provides:
+- **Shell completions** for commands and options
+- **`gwtx switch` command** to interactively change directory to selected worktree (only available with shell integration)
+- **Automatic trust warnings** when entering directories with untrusted hooks
 
 ## Configuration
 
@@ -159,7 +211,7 @@ defaults:
   on_conflict: backup
 ```
 
-### Basic Configuration
+### Basic configuration
 
 ```yaml
 defaults:
@@ -186,7 +238,7 @@ copy:
 
 **Examples:** [examples/basic.yaml](examples/basic.yaml)
 
-### Worktree Path Configuration
+### Worktree path configuration
 
 Configure default worktree path with template variables:
 
@@ -201,7 +253,7 @@ worktree:
 
 **Examples:** [examples/worktree-path.yaml](examples/worktree-path.yaml)
 
-### Glob Patterns
+### Glob patterns
 
 Use glob patterns in `link` operations to match multiple files:
 
@@ -266,7 +318,7 @@ hooks:
 | `copy` | Copy files or directories |
 | `hooks.*` | Run custom commands (requires trust) |
 
-### Conflict Handling
+### Conflict handling
 
 When a target file already exists, gwtx can:
 
@@ -277,7 +329,7 @@ When a target file already exists, gwtx can:
 
 Set globally in `defaults`, per-operation, or via `--on-conflict` flag.
 
-### Other Options
+### Other options
 
 | Option | Description |
 |--------|-------------|
@@ -359,7 +411,7 @@ gwtx completions powershell > _gwtx.ps1
 
 Supported shells: bash, elvish, fish, powershell, zsh
 
-### PowerShell Note
+### PowerShell note
 
 To find your PowerShell profile path, run `echo $PROFILE`. If the profile file doesn't exist, create it with `New-Item -Path $PROFILE -ItemType File -Force`.
 

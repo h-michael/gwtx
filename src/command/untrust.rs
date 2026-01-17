@@ -9,7 +9,7 @@ pub(crate) fn run(args: UntrustArgs) -> Result<()> {
         } else {
             println!("Trusted repositories:");
             for entry in entries {
-                println!("  {}", entry.repo_root.display());
+                println!("  {}", entry.main_worktree_path.display());
                 println!("    Trusted at: {}", entry.trusted_at);
             }
         }
@@ -21,11 +21,13 @@ pub(crate) fn run(args: UntrustArgs) -> Result<()> {
         None => git::repository_root()?,
     };
 
+    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
+
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),
     })?;
 
-    if trust::untrust(&repo_root, &config.hooks)? {
+    if trust::untrust(&main_worktree_path, &config.hooks)? {
         println!("Untrusted hooks for: {}", repo_root.display());
     } else {
         println!("Hooks were not trusted: {}", repo_root.display());
