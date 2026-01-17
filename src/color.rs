@@ -109,6 +109,15 @@ impl ColorScheme {
         text.yellow().to_string()
     }
 
+    // Diff colors
+    pub fn diff_removed(text: &str) -> String {
+        text.red().to_string()
+    }
+
+    pub fn diff_added(text: &str) -> String {
+        text.green().to_string()
+    }
+
     // Common
     pub fn dimmed(text: &str) -> String {
         text.dimmed().to_string()

@@ -27,10 +27,10 @@ pub(crate) fn run(args: UntrustArgs) -> Result<()> {
         path: repo_root.clone(),
     })?;
 
-    if trust::untrust(&main_worktree_path, &config.hooks)? {
-        println!("Untrusted hooks for: {}", repo_root.display());
+    if trust::untrust(&main_worktree_path, &config)? {
+        println!("Untrusted configuration for: {}", repo_root.display());
     } else {
-        println!("Hooks were not trusted: {}", repo_root.display());
+        println!("Configuration was not trusted: {}", repo_root.display());
     }
 
     Ok(())

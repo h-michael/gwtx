@@ -30,20 +30,20 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     // Initial config load for trust check
     let initial_config = config::load(&repo_root)?.unwrap_or_default();
 
-    // Trust check for hooks (before interactive mode)
+    // Trust check for full configuration (before interactive mode)
     if initial_config.hooks.has_hooks()
         && !args.no_setup
-        && !trust::is_trusted(&main_worktree_path, &initial_config.hooks)?
+        && !trust::is_trusted(&main_worktree_path, &initial_config)?
     {
         // Display hooks that need trust
         hook::display_hooks_for_review(&initial_config.hooks);
 
         eprintln!();
-        eprintln!("Error: Hooks are not trusted.");
-        eprintln!("The .gwtx.toml file contains hooks that can execute arbitrary commands.");
-        eprintln!("For security, you must explicitly review and trust these hooks.");
+        eprintln!("Error: Configuration is not trusted.");
+        eprintln!("The .gwtx.yaml file contains hooks that can execute arbitrary commands.");
+        eprintln!("For security, you must explicitly review and trust the configuration.");
         eprintln!();
-        eprintln!("To trust these hooks, run:");
+        eprintln!("To trust this configuration, run:");
         eprintln!("  gwtx trust");
         eprintln!();
         eprintln!("Or skip hooks:");
@@ -52,14 +52,14 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     }
 
     // TOCTOU protection: reload config immediately before use
-    // This prevents attacks where .gwtx.toml is modified between trust check and execution
+    // This prevents attacks where .gwtx.yaml is modified between trust check and execution
     let config = config::load(&repo_root)?.unwrap_or_default();
     if config.hooks.has_hooks()
         && !args.no_setup
-        && !trust::is_trusted(&main_worktree_path, &config.hooks)?
+        && !trust::is_trusted(&main_worktree_path, &config)?
     {
-        eprintln!("\nError: .gwtx.toml was modified after trust check.");
-        eprintln!("For security, hooks must be re-trusted after any changes.");
+        eprintln!("\nError: .gwtx.yaml was modified after trust check.");
+        eprintln!("For security, configuration must be re-trusted after any changes.");
         eprintln!("Run: gwtx trust");
         return Err(Error::HooksNotTrusted);
     }

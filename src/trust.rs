@@ -30,7 +30,7 @@
 //! nothing to trust; the user cannot create a `.gwtx.yaml` without hooks and then claim
 //! hooks exist.
 
-use crate::config::Hooks;
+use crate::config::{Config, ConfigSnapshot};
 use crate::error::{Error, Result};
 
 use std::fs;
@@ -45,43 +45,59 @@ use sha2::{Digest, Sha256};
 use crate::config::HookEntry;
 
 const TRUST_DIR_NAME: &str = "gwtx/trusted";
+const TRUST_VERSION: u32 = 1;
 
-/// Represents a trusted hook configuration.
+/// Represents a trusted configuration entry.
 ///
 /// Fields:
+/// - `version`: Version of the trust format (currently 1).
 /// - `main_worktree_path`: The main worktree path (where `.git` is a directory).
 ///   All worktrees created from this path share the same trust. Stored for verification
 ///   during trust checks to prevent symlink attacks.
-/// - `trusted_at`: RFC3339 timestamp of when the hooks were trusted.
+/// - `trusted_at`: RFC3339 timestamp of when the configuration was trusted.
+/// - `config_snapshot`: Snapshot of the entire configuration at trust time for detecting changes.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct TrustEntry {
+    pub version: u32,
     pub main_worktree_path: PathBuf,
     pub trusted_at: String,
+    pub config_snapshot: ConfigSnapshot,
 }
 
-/// Get trust storage directory
+/// Get trust storage directory with versioning support.
 /// Uses XDG_DATA_HOME or falls back to ~/.local/share on Linux
+/// Path format: ~/.local/share/gwtx/trusted/v1/
 fn trust_dir() -> Result<PathBuf> {
     let base = dirs::data_dir().ok_or(Error::TrustStorageNotFound)?;
-    Ok(base.join(TRUST_DIR_NAME))
+    Ok(base
+        .join(TRUST_DIR_NAME)
+        .join(format!("v{}", TRUST_VERSION)))
 }
 
-/// Compute SHA256 hash of hooks configuration.
+/// Compute SHA256 hash of full configuration.
 ///
-/// Combines the main worktree path and all hook commands/descriptions into a single
-/// hash. This hash is used as the trust file identifier. If either the path or any hook
-/// content changes, the hash changes, requiring re-trust.
+/// Combines the main worktree path and entire configuration (defaults, worktree,
+/// hooks, mkdir, link, copy operations) into a single hash. This hash is used as
+/// the trust file identifier. If any configuration changes, the hash changes, requiring re-trust.
 ///
-/// Hash includes:
+/// Hash includes (field-by-field with JSON serialization):
 /// - Canonicalized main_worktree_path (prevents different path representations)
-/// - Hook commands and descriptions from all phases (pre_add, post_add, pre_remove, post_remove)
+/// - defaults (OnConflict option)
+/// - worktree (path_template, branch_template)
+/// - hooks (pre_add, post_add, pre_remove, post_remove)
+/// - mkdir operations (path, description)
+/// - link operations (source, target, on_conflict, description, ignore_tracked)
+/// - copy operations (source, target, on_conflict, description)
 ///
 /// **Stability**: Uses explicit JSON serialization to ensure the hash remains stable
-/// across Rust compiler versions. Debug trait output format isn't guaranteed stable,
-/// so we use JSON's stable text representation instead.
+/// across Rust compiler versions. JSON's stable text representation ensures consistency.
+///
+/// **Field-by-field approach**: Each field is serialized independently to be more
+/// stable than serializing the entire Config at once, which could be affected by
+/// struct field ordering changes.
 ///
 /// Returns the hash as a lowercase hex string (64 hex characters for SHA256).
-pub(crate) fn compute_hash(main_worktree_path: &Path, hooks: &Hooks) -> Result<String> {
+pub(crate) fn compute_hash(main_worktree_path: &Path, config: &Config) -> Result<String> {
     let mut hasher = Sha256::new();
 
     // Canonicalize to ensure stable representation across systems
@@ -92,17 +108,20 @@ pub(crate) fn compute_hash(main_worktree_path: &Path, hooks: &Hooks) -> Result<S
                 message: format!("Failed to canonicalize worktree path: {}", e),
             })?;
 
-    // Use JSON serialization for stable, version-independent format
-    // Serialize: { path: "...", hooks: { pre_add: [...], post_add: [...], ... } }
+    // Hash the main worktree path
     let path_str = canonical_path.to_string_lossy();
     hasher.update(path_str.as_bytes());
     hasher.update(b"\n");
 
-    // Serialize hooks as JSON for stable representation
-    let hooks_json = serde_json::to_string(hooks).map_err(|e| Error::TrustFileSerialization {
-        message: format!("Failed to serialize hooks: {}", e),
-    })?;
-    hasher.update(hooks_json.as_bytes());
+    // Create a ConfigSnapshot from the Config for stable hashing
+    let snapshot = ConfigSnapshot::from_config(config);
+
+    // Serialize the snapshot as JSON for stable representation
+    let snapshot_json =
+        serde_json::to_string(&snapshot).map_err(|e| Error::TrustFileSerialization {
+            message: format!("Failed to serialize config snapshot: {}", e),
+        })?;
+    hasher.update(snapshot_json.as_bytes());
 
     Ok(format!("{:x}", hasher.finalize()))
 }
@@ -132,7 +151,7 @@ fn main_worktree_dir_name(path: &Path) -> String {
     format!("{:x}", hash)[..16].to_string()
 }
 
-/// Check if hooks are trusted for the given main worktree.
+/// Check if configuration is trusted for the given main worktree.
 ///
 /// Returns true if:
 /// 1. No hooks are defined (empty configuration)
@@ -149,8 +168,8 @@ fn main_worktree_dir_name(path: &Path) -> String {
 ///
 /// **Path Verification**: Prevents symlink attacks where an attacker could replace the
 /// worktree with a symlink to a different location containing old trusted hooks.
-pub(crate) fn is_trusted(main_worktree_path: &Path, hooks: &Hooks) -> Result<bool> {
-    if !hooks.has_hooks() {
+pub(crate) fn is_trusted(main_worktree_path: &Path, config: &Config) -> Result<bool> {
+    if !config.hooks.has_hooks() {
         return Ok(true); // No hooks = implicitly trusted
     }
 
@@ -162,7 +181,7 @@ pub(crate) fn is_trusted(main_worktree_path: &Path, hooks: &Hooks) -> Result<boo
                 message: format!("Failed to canonicalize worktree path: {}", e),
             })?;
 
-    let hash = compute_hash(&canonical_path, hooks)?;
+    let hash = compute_hash(&canonical_path, config)?;
     let dir_name = main_worktree_dir_name(&canonical_path);
     let trust_file = trust_dir()?.join(&dir_name).join(format!("{}.yaml", hash));
 
@@ -187,24 +206,79 @@ pub(crate) fn is_trusted(main_worktree_path: &Path, hooks: &Hooks) -> Result<boo
     Ok(true)
 }
 
-/// Trust hooks for a repository by marking them as reviewed and approved.
+/// Read a trust entry for a repository to get previous configuration snapshot.
 ///
-/// Creates a trust file at `~/.local/share/gwtx/trusted/{primary-worktree-dir}/{hash}.yaml`
-/// containing the main_worktree_path and timestamp.
+/// Returns the TrustEntry if found and valid, or None if no trust file exists.
+/// Validates that main_worktree_path matches the stored path to prevent using
+/// misplaced or tampered trust files.
+///
+/// **Note**: Typically only one trust file exists per repository. If multiple files
+/// are present, returns the first one found (filesystem order-dependent).
+/// Used to detect configuration changes and display diffs before re-trusting.
+pub(crate) fn read_trust_entry(main_worktree_path: &Path) -> Result<Option<TrustEntry>> {
+    let canonical_path =
+        main_worktree_path
+            .canonicalize()
+            .map_err(|e| Error::TrustVerificationFailed {
+                message: format!("Failed to canonicalize worktree path: {}", e),
+            })?;
+    let dir_name = main_worktree_dir_name(&canonical_path);
+    let trust_dir = trust_dir()?;
+    let repo_trust_dir = trust_dir.join(&dir_name);
+
+    // If directory doesn't exist, no trust files
+    if !repo_trust_dir.exists() {
+        return Ok(None);
+    }
+
+    // Try to find and read the trust file. Validates that main_worktree_path matches
+    // the stored path to prevent using misplaced or tampered trust files.
+    match fs::read_dir(&repo_trust_dir) {
+        Ok(entries) => {
+            // Get the first trust file found (typically only one exists)
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().is_some_and(|ext| ext == "yaml") {
+                    let content = fs::read_to_string(&path)?;
+                    let trust_entry: TrustEntry = serde_yaml::from_str(&content).map_err(|e| {
+                        Error::TrustFileSerialization {
+                            message: format!("Failed to parse trust file: {}", e),
+                        }
+                    })?;
+
+                    // Verify main_worktree_path matches to prevent using misplaced files
+                    if trust_entry.main_worktree_path != canonical_path {
+                        return Ok(None);
+                    }
+
+                    return Ok(Some(trust_entry));
+                }
+            }
+            Ok(None)
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Trust configuration for a repository by marking it as reviewed and approved.
+///
+/// Creates a trust file at `~/.local/share/gwtx/trusted/v1/{primary-worktree-dir}/{hash}.yaml`
+/// containing the main_worktree_path, timestamp, and full configuration snapshot.
 ///
 /// **Automatic Cleanup**: Deletes all old trust files in the same directory before creating
 /// the new one. This prevents reversion attacks where an attacker could restore an old
-/// `.gwtx.yaml` and use previously trusted hooks with different content.
+/// `.gwtx.yaml` and use previously trusted configuration with different content.
 ///
 /// Reversion Attack Scenario (prevented by this cleanup):
-/// 1. User trusts hooks (file hash=ABC123 created)
+/// 1. User trusts config (file hash=ABC123 created)
 /// 2. Attacker modifies `.gwtx.yaml` with dangerous commands
 /// 3. User runs `gwtx trust` again with new content (file hash=XYZ789 created)
 /// 4. Attacker reverts `.gwtx.yaml` to original content (hash=ABC123)
-/// 5. OLD BEHAVIOR: hash=ABC123 still exists, hooks trusted without re-review
+/// 5. OLD BEHAVIOR: hash=ABC123 still exists, config trusted without re-review
 /// 6. NEW BEHAVIOR: hash=ABC123 was deleted in step 3, reversion fails
-pub(crate) fn trust(main_worktree_path: &Path, hooks: &Hooks) -> Result<()> {
-    if !hooks.has_hooks() {
+pub(crate) fn trust(main_worktree_path: &Path, config: &Config) -> Result<()> {
+    if !config.hooks.has_hooks() {
         return Ok(());
     }
 
@@ -222,7 +296,7 @@ pub(crate) fn trust(main_worktree_path: &Path, hooks: &Hooks) -> Result<()> {
     fs::create_dir_all(&trust_repo_path)?;
 
     // Remove old trust files for this main_worktree_path (before saving new one).
-    // Security: Prevents reversion attacks by ensuring only the current hooks hash
+    // Security: Prevents reversion attacks by ensuring only the current config hash
     // is valid for this primary worktree. If .gwtx.yaml is reverted to an older
     // version, the old hash file won't exist and re-trust will be required.
     if trust_repo_path.exists() {
@@ -234,12 +308,15 @@ pub(crate) fn trust(main_worktree_path: &Path, hooks: &Hooks) -> Result<()> {
         }
     }
 
-    let hash = compute_hash(&canonical_path, hooks)?;
+    let hash = compute_hash(&canonical_path, config)?;
     let trust_file = trust_repo_path.join(format!("{}.yaml", hash));
 
+    let snapshot = ConfigSnapshot::from_config(config);
     let entry = TrustEntry {
+        version: TRUST_VERSION,
         main_worktree_path: canonical_path,
         trusted_at: Utc::now().to_rfc3339(),
+        config_snapshot: snapshot,
     };
 
     let content = serde_yaml::to_string(&entry).map_err(|e| Error::TrustFileSerialization {
@@ -251,12 +328,12 @@ pub(crate) fn trust(main_worktree_path: &Path, hooks: &Hooks) -> Result<()> {
     Ok(())
 }
 
-/// Remove trust for hooks of a repository.
+/// Remove trust for configuration of a repository.
 ///
-/// Deletes the trust file matching the current hooks hash. Returns true if a trust file
-/// existed and was deleted, false if no trust file was found for these hooks.
-pub(crate) fn untrust(main_worktree_path: &Path, hooks: &Hooks) -> Result<bool> {
-    if !hooks.has_hooks() {
+/// Deletes the trust file matching the current configuration hash. Returns true if a trust file
+/// existed and was deleted, false if no trust file was found for this configuration.
+pub(crate) fn untrust(main_worktree_path: &Path, config: &Config) -> Result<bool> {
+    if !config.hooks.has_hooks() {
         return Ok(false);
     }
 
@@ -268,7 +345,7 @@ pub(crate) fn untrust(main_worktree_path: &Path, hooks: &Hooks) -> Result<bool> 
                 message: format!("Failed to canonicalize worktree path: {}", e),
             })?;
 
-    let hash = compute_hash(&canonical_path, hooks)?;
+    let hash = compute_hash(&canonical_path, config)?;
     let dir_name = main_worktree_dir_name(&canonical_path);
     let trust_file = trust_dir()?.join(&dir_name).join(format!("{}.yaml", hash));
 
@@ -333,14 +410,29 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Config, Defaults, Hooks, Mkdir, Worktree};
     use tempfile::TempDir;
 
-    #[test]
-    fn test_compute_hash_empty_hooks() {
-        let temp_dir = TempDir::new().unwrap();
-        let hooks = Hooks::default();
+    fn create_test_config() -> Config {
+        Config {
+            defaults: Defaults { on_conflict: None },
+            worktree: Worktree {
+                path_template: None,
+                branch_template: None,
+            },
+            hooks: Hooks::default(),
+            mkdir: Vec::new(),
+            link: Vec::new(),
+            copy: Vec::new(),
+        }
+    }
 
-        let hash = compute_hash(temp_dir.path(), &hooks).unwrap();
+    #[test]
+    fn test_compute_hash_empty_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config();
+
+        let hash = compute_hash(temp_dir.path(), &config).unwrap();
         assert!(!hash.is_empty());
         assert_eq!(hash.len(), 64); // SHA256 produces 64 hex characters
     }
@@ -349,7 +441,8 @@ mod tests {
     fn test_compute_hash_different_hooks() {
         let temp_dir = TempDir::new().unwrap();
 
-        let hooks1 = Hooks {
+        let mut config1 = create_test_config();
+        config1.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'test1'".to_string(),
                 description: None,
@@ -357,7 +450,8 @@ mod tests {
             ..Default::default()
         };
 
-        let hooks2 = Hooks {
+        let mut config2 = create_test_config();
+        config2.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'test2'".to_string(),
                 description: None,
@@ -365,8 +459,47 @@ mod tests {
             ..Default::default()
         };
 
-        let hash1 = compute_hash(temp_dir.path(), &hooks1).unwrap();
-        let hash2 = compute_hash(temp_dir.path(), &hooks2).unwrap();
+        let hash1 = compute_hash(temp_dir.path(), &config1).unwrap();
+        let hash2 = compute_hash(temp_dir.path(), &config2).unwrap();
+
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_compute_hash_different_mkdir() {
+        let temp_dir = TempDir::new().unwrap();
+        use std::path::PathBuf;
+
+        let mut config1 = create_test_config();
+        config1.mkdir = vec![Mkdir {
+            path: PathBuf::from("dir1"),
+            description: None,
+        }];
+
+        let mut config2 = create_test_config();
+        config2.mkdir = vec![Mkdir {
+            path: PathBuf::from("dir2"),
+            description: None,
+        }];
+
+        let hash1 = compute_hash(temp_dir.path(), &config1).unwrap();
+        let hash2 = compute_hash(temp_dir.path(), &config2).unwrap();
+
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_compute_hash_different_worktree() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let mut config1 = create_test_config();
+        config1.worktree.path_template = Some("../wt1".to_string());
+
+        let mut config2 = create_test_config();
+        config2.worktree.path_template = Some("../wt2".to_string());
+
+        let hash1 = compute_hash(temp_dir.path(), &config1).unwrap();
+        let hash2 = compute_hash(temp_dir.path(), &config2).unwrap();
 
         assert_ne!(hash1, hash2);
     }
@@ -374,15 +507,16 @@ mod tests {
     #[test]
     fn test_is_trusted_empty_hooks() {
         let temp_dir = TempDir::new().unwrap();
-        let hooks = Hooks::default();
+        let config = create_test_config();
 
-        assert!(is_trusted(temp_dir.path(), &hooks).unwrap());
+        assert!(is_trusted(temp_dir.path(), &config).unwrap());
     }
 
     #[test]
     fn test_trust_and_untrust() {
         let temp_dir = TempDir::new().unwrap();
-        let hooks = Hooks {
+        let mut config = create_test_config();
+        config.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'test'".to_string(),
                 description: None,
@@ -391,18 +525,18 @@ mod tests {
         };
 
         // Initially not trusted
-        assert!(!is_trusted(temp_dir.path(), &hooks).unwrap());
+        assert!(!is_trusted(temp_dir.path(), &config).unwrap());
 
-        // Trust the hooks
-        trust(temp_dir.path(), &hooks).unwrap();
-        assert!(is_trusted(temp_dir.path(), &hooks).unwrap());
+        // Trust the config
+        trust(temp_dir.path(), &config).unwrap();
+        assert!(is_trusted(temp_dir.path(), &config).unwrap());
 
-        // Untrust the hooks
-        assert!(untrust(temp_dir.path(), &hooks).unwrap());
-        assert!(!is_trusted(temp_dir.path(), &hooks).unwrap());
+        // Untrust the config
+        assert!(untrust(temp_dir.path(), &config).unwrap());
+        assert!(!is_trusted(temp_dir.path(), &config).unwrap());
 
         // Untrusting again should return false
-        assert!(!untrust(temp_dir.path(), &hooks).unwrap());
+        assert!(!untrust(temp_dir.path(), &config).unwrap());
     }
 
     #[test]
@@ -415,7 +549,8 @@ mod tests {
     #[test]
     fn test_list_trusted_with_trusted_repo() {
         let temp_dir = TempDir::new().unwrap();
-        let hooks = Hooks {
+        let mut config = create_test_config();
+        config.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'test'".to_string(),
                 description: None,
@@ -427,8 +562,8 @@ mod tests {
             ..Default::default()
         };
 
-        // Trust the hooks
-        trust(temp_dir.path(), &hooks).unwrap();
+        // Trust the config
+        trust(temp_dir.path(), &config).unwrap();
 
         // List should include this repo
         let entries = list_trusted().unwrap();
@@ -443,7 +578,7 @@ mod tests {
         assert!(found, "Trusted repository should be in the list");
 
         // Cleanup
-        untrust(temp_dir.path(), &hooks).unwrap();
+        untrust(temp_dir.path(), &config).unwrap();
     }
 
     #[test]
@@ -451,7 +586,8 @@ mod tests {
         let temp_dir1 = TempDir::new().unwrap();
         let temp_dir2 = TempDir::new().unwrap();
 
-        let hooks1 = Hooks {
+        let mut config1 = create_test_config();
+        config1.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'repo1'".to_string(),
                 description: None,
@@ -459,7 +595,8 @@ mod tests {
             ..Default::default()
         };
 
-        let hooks2 = Hooks {
+        let mut config2 = create_test_config();
+        config2.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'repo2'".to_string(),
                 description: None,
@@ -468,8 +605,8 @@ mod tests {
         };
 
         // Trust both repos
-        trust(temp_dir1.path(), &hooks1).unwrap();
-        trust(temp_dir2.path(), &hooks2).unwrap();
+        trust(temp_dir1.path(), &config1).unwrap();
+        trust(temp_dir2.path(), &config2).unwrap();
 
         // List should include both
         let entries = list_trusted().unwrap();
@@ -493,14 +630,15 @@ mod tests {
         assert!(found2, "Second trusted repository should be in the list");
 
         // Cleanup
-        untrust(temp_dir1.path(), &hooks1).unwrap();
-        untrust(temp_dir2.path(), &hooks2).unwrap();
+        untrust(temp_dir1.path(), &config1).unwrap();
+        untrust(temp_dir2.path(), &config2).unwrap();
     }
 
     #[test]
     fn test_trust_entry_contains_main_worktree_path() {
         let temp_dir = TempDir::new().unwrap();
-        let hooks = Hooks {
+        let mut config = create_test_config();
+        config.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'pre'".to_string(),
                 description: None,
@@ -519,8 +657,8 @@ mod tests {
             }],
         };
 
-        // Trust the hooks
-        trust(temp_dir.path(), &hooks).unwrap();
+        // Trust the config
+        trust(temp_dir.path(), &config).unwrap();
 
         // Find the entry
         let entries = list_trusted().unwrap();
@@ -541,13 +679,14 @@ mod tests {
         assert!(!entry.trusted_at.is_empty());
 
         // Cleanup
-        untrust(temp_dir.path(), &hooks).unwrap();
+        untrust(temp_dir.path(), &config).unwrap();
     }
 
     #[test]
     fn test_is_trusted_hooks_changed() {
         let temp_dir = TempDir::new().unwrap();
-        let hooks1 = Hooks {
+        let mut config1 = create_test_config();
+        config1.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'original'".to_string(),
                 description: None,
@@ -555,12 +694,13 @@ mod tests {
             ..Default::default()
         };
 
-        // Trust the original hooks
-        trust(temp_dir.path(), &hooks1).unwrap();
-        assert!(is_trusted(temp_dir.path(), &hooks1).unwrap());
+        // Trust the original config
+        trust(temp_dir.path(), &config1).unwrap();
+        assert!(is_trusted(temp_dir.path(), &config1).unwrap());
 
         // Change the hooks (different command)
-        let hooks2 = Hooks {
+        let mut config2 = create_test_config();
+        config2.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'modified'".to_string(),
                 description: None,
@@ -569,16 +709,17 @@ mod tests {
         };
 
         // Should not be trusted anymore
-        assert!(!is_trusted(temp_dir.path(), &hooks2).unwrap());
+        assert!(!is_trusted(temp_dir.path(), &config2).unwrap());
 
         // Cleanup
-        untrust(temp_dir.path(), &hooks1).unwrap();
+        untrust(temp_dir.path(), &config1).unwrap();
     }
 
     #[test]
     fn test_is_trusted_hooks_removed() {
         let temp_dir = TempDir::new().unwrap();
-        let hooks = Hooks {
+        let mut config = create_test_config();
+        config.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'test'".to_string(),
                 description: None,
@@ -586,18 +727,18 @@ mod tests {
             ..Default::default()
         };
 
-        // Trust the hooks
-        trust(temp_dir.path(), &hooks).unwrap();
-        assert!(is_trusted(temp_dir.path(), &hooks).unwrap());
+        // Trust the config
+        trust(temp_dir.path(), &config).unwrap();
+        assert!(is_trusted(temp_dir.path(), &config).unwrap());
 
-        // Remove hooks (empty hooks)
-        let empty_hooks = Hooks::default();
+        // Remove hooks (empty config)
+        let empty_config = create_test_config();
 
         // Empty hooks should be implicitly trusted
-        assert!(is_trusted(temp_dir.path(), &empty_hooks).unwrap());
+        assert!(is_trusted(temp_dir.path(), &empty_config).unwrap());
 
         // Cleanup
-        untrust(temp_dir.path(), &hooks).unwrap();
+        untrust(temp_dir.path(), &config).unwrap();
     }
 
     #[test]
@@ -607,7 +748,8 @@ mod tests {
         let temp_dir1 = TempDir::new().unwrap();
         let temp_dir2 = TempDir::new().unwrap();
 
-        let hooks = Hooks {
+        let mut config = create_test_config();
+        config.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'test'".to_string(),
                 description: None,
@@ -615,12 +757,12 @@ mod tests {
             ..Default::default()
         };
 
-        // Trust hooks for temp_dir1
-        trust(temp_dir1.path(), &hooks).unwrap();
-        assert!(is_trusted(temp_dir1.path(), &hooks).unwrap());
+        // Trust config for temp_dir1
+        trust(temp_dir1.path(), &config).unwrap();
+        assert!(is_trusted(temp_dir1.path(), &config).unwrap());
 
-        // Manually create trust file for same hooks hash but with different main_worktree_path
-        let hash = compute_hash(temp_dir1.path(), &hooks).unwrap();
+        // Manually create trust file with different main_worktree_path
+        let hash = compute_hash(temp_dir1.path(), &config).unwrap();
         let dir_name = main_worktree_dir_name(
             &temp_dir1
                 .path()
@@ -632,18 +774,21 @@ mod tests {
         let trust_file = trust_subdir.join(format!("{}.yaml", hash));
 
         // Overwrite with different main_worktree_path
+        let snapshot = ConfigSnapshot::from_config(&config);
         let fake_entry = TrustEntry {
+            version: TRUST_VERSION,
             main_worktree_path: temp_dir2.path().canonicalize().unwrap(),
             trusted_at: chrono::Utc::now().to_rfc3339(),
+            config_snapshot: snapshot,
         };
         let content = serde_yaml::to_string(&fake_entry).unwrap();
         fs::write(&trust_file, content).unwrap();
 
         // Should not be trusted for temp_dir1 anymore (main_worktree_path mismatch)
-        assert!(!is_trusted(temp_dir1.path(), &hooks).unwrap());
+        assert!(!is_trusted(temp_dir1.path(), &config).unwrap());
 
         // Cleanup
-        untrust(temp_dir1.path(), &hooks).unwrap();
+        untrust(temp_dir1.path(), &config).unwrap();
     }
 
     #[test]
@@ -651,7 +796,8 @@ mod tests {
         use std::fs;
 
         let temp_dir = TempDir::new().unwrap();
-        let hooks = Hooks {
+        let mut config = create_test_config();
+        config.hooks = Hooks {
             pre_add: vec![HookEntry {
                 command: "echo 'test'".to_string(),
                 description: None,
@@ -659,12 +805,12 @@ mod tests {
             ..Default::default()
         };
 
-        // Trust the hooks
-        trust(temp_dir.path(), &hooks).unwrap();
-        assert!(is_trusted(temp_dir.path(), &hooks).unwrap());
+        // Trust the config
+        trust(temp_dir.path(), &config).unwrap();
+        assert!(is_trusted(temp_dir.path(), &config).unwrap());
 
         // Corrupt the trust file
-        let hash = compute_hash(temp_dir.path(), &hooks).unwrap();
+        let hash = compute_hash(temp_dir.path(), &config).unwrap();
         let canonical_path = temp_dir
             .path()
             .canonicalize()
@@ -677,7 +823,7 @@ mod tests {
         fs::write(&trust_file, "invalid yaml content {{{").unwrap();
 
         // Should return an error
-        let result = is_trusted(temp_dir.path(), &hooks);
+        let result = is_trusted(temp_dir.path(), &config);
         assert!(result.is_err());
 
         // Cleanup (remove corrupted file)

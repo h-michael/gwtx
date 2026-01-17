@@ -25,28 +25,27 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
     // Initial config load for trust check
     let initial_config = config::load(&repo_root)?.unwrap_or_default();
 
-    // Trust check for hooks
-    if initial_config.hooks.has_hooks()
-        && !trust::is_trusted(&main_worktree_path, &initial_config.hooks)?
+    // Trust check for configuration
+    if initial_config.hooks.has_hooks() && !trust::is_trusted(&main_worktree_path, &initial_config)?
     {
         // Display hooks that need trust
         hook::display_hooks_for_review(&initial_config.hooks);
 
         eprintln!();
-        eprintln!("Error: Hooks are not trusted.");
-        eprintln!("The .gwtx.toml file contains hooks that can execute arbitrary commands.");
-        eprintln!("For security, you must explicitly review and trust these hooks.");
+        eprintln!("Error: Configuration is not trusted.");
+        eprintln!("The .gwtx.yaml file contains hooks that can execute arbitrary commands.");
+        eprintln!("For security, you must explicitly review and trust the configuration.");
         eprintln!();
-        eprintln!("To trust these hooks, run:");
+        eprintln!("To trust this configuration, run:");
         eprintln!("  gwtx trust");
         return Err(Error::HooksNotTrusted);
     }
 
     // TOCTOU protection: reload config immediately before use
     let config = config::load(&repo_root)?.unwrap_or_default();
-    if config.hooks.has_hooks() && !trust::is_trusted(&main_worktree_path, &config.hooks)? {
-        eprintln!("\nError: .gwtx.toml was modified after trust check.");
-        eprintln!("For security, hooks must be re-trusted after any changes.");
+    if config.hooks.has_hooks() && !trust::is_trusted(&main_worktree_path, &config)? {
+        eprintln!("\nError: .gwtx.yaml was modified after trust check.");
+        eprintln!("For security, configuration must be re-trusted after any changes.");
         eprintln!("Run: gwtx trust");
         return Err(Error::HooksNotTrusted);
     }

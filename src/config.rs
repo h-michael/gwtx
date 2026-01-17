@@ -516,7 +516,7 @@ fn expand_branch_variable(var: &str, env: &BranchTemplateEnv) -> String {
 }
 
 /// Hook commands configuration.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Hooks {
     pub pre_add: Vec<HookEntry>,
     pub post_add: Vec<HookEntry>,
@@ -561,7 +561,7 @@ pub(crate) struct Copy {
 }
 
 /// Conflict resolution mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[schemars(
     title = "Conflict Resolution Mode",
     description = "How to handle file conflicts during operations"
@@ -572,6 +572,97 @@ pub(crate) enum OnConflict {
     Skip,
     Overwrite,
     Backup,
+}
+
+/// Snapshot of configuration for trust verification.
+///
+/// Captures all configuration settings at the time of trust to detect when
+/// configuration changes require re-trust. This enables full configuration
+/// tracking (not just hooks) for comprehensive security coverage.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct ConfigSnapshot {
+    pub defaults: Option<OnConflict>,
+    pub worktree: WorktreeSnapshot,
+    pub hooks: Hooks,
+    pub mkdir: Vec<MkdirSnapshot>,
+    pub link: Vec<LinkSnapshot>,
+    pub copy: Vec<CopySnapshot>,
+}
+
+/// Worktree configuration snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct WorktreeSnapshot {
+    pub path_template: Option<String>,
+    pub branch_template: Option<String>,
+}
+
+/// Mkdir operation snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct MkdirSnapshot {
+    pub path: String,
+    pub description: Option<String>,
+}
+
+/// Link operation snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct LinkSnapshot {
+    pub source: String,
+    pub target: String,
+    pub on_conflict: Option<OnConflict>,
+    pub description: Option<String>,
+    pub ignore_tracked: bool,
+}
+
+/// Copy operation snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct CopySnapshot {
+    pub source: String,
+    pub target: String,
+    pub on_conflict: Option<OnConflict>,
+    pub description: Option<String>,
+}
+
+impl ConfigSnapshot {
+    /// Convert a Config into a ConfigSnapshot.
+    pub(crate) fn from_config(config: &Config) -> Self {
+        ConfigSnapshot {
+            defaults: config.defaults.on_conflict,
+            worktree: WorktreeSnapshot {
+                path_template: config.worktree.path_template.clone(),
+                branch_template: config.worktree.branch_template.clone(),
+            },
+            hooks: config.hooks.clone(),
+            mkdir: config
+                .mkdir
+                .iter()
+                .map(|m| MkdirSnapshot {
+                    path: m.path.to_string_lossy().to_string(),
+                    description: m.description.clone(),
+                })
+                .collect(),
+            link: config
+                .link
+                .iter()
+                .map(|l| LinkSnapshot {
+                    source: l.source.to_string_lossy().to_string(),
+                    target: l.target.to_string_lossy().to_string(),
+                    on_conflict: l.on_conflict,
+                    description: l.description.clone(),
+                    ignore_tracked: l.ignore_tracked,
+                })
+                .collect(),
+            copy: config
+                .copy
+                .iter()
+                .map(|c| CopySnapshot {
+                    source: c.source.to_string_lossy().to_string(),
+                    target: c.target.to_string_lossy().to_string(),
+                    on_conflict: c.on_conflict,
+                    description: c.description.clone(),
+                })
+                .collect(),
+        }
+    }
 }
 
 #[cfg(test)]
