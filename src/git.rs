@@ -85,16 +85,7 @@ pub(crate) fn repository_name() -> Result<String> {
 
 /// Remove a worktree. Used for rollback on failure.
 pub(crate) fn worktree_remove(path: &std::path::Path, force: bool) -> Result<()> {
-    let mut cmd = Command::new("git");
-    cmd.args(["worktree", "remove"]);
-
-    if force {
-        cmd.arg("--force");
-    }
-
-    cmd.arg(path);
-
-    let output = cmd.output()?;
+    let output = worktree_remove_inner(path, force)?;
 
     if !output.status.success() {
         // Ignore errors during rollback - best effort cleanup
@@ -105,6 +96,31 @@ pub(crate) fn worktree_remove(path: &std::path::Path, force: bool) -> Result<()>
     }
 
     Ok(())
+}
+
+pub(crate) fn worktree_remove_checked(path: &std::path::Path, force: bool) -> Result<()> {
+    let output = worktree_remove_inner(path, force)?;
+
+    if !output.status.success() {
+        return Err(Error::GitWorktreeRemoveFailed {
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn worktree_remove_inner(path: &std::path::Path, force: bool) -> Result<std::process::Output> {
+    let mut cmd = Command::new("git");
+    cmd.args(["worktree", "remove"]);
+
+    if force {
+        cmd.arg("--force");
+    }
+
+    cmd.arg(path);
+
+    Ok(cmd.output()?)
 }
 
 /// Parse git command output into lines.

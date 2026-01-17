@@ -1,5 +1,6 @@
 use crate::cli::AddArgs;
 use crate::color::ColorConfig;
+use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::config::{self, Config, Link, OnConflict};
 use crate::error::{Error, Result};
 use crate::git;
@@ -7,7 +8,6 @@ use crate::hook::{self, HookEnv};
 use crate::operation::{self, ConflictAction, check_conflict, create_directory, resolve_conflict};
 use crate::output::Output;
 use crate::prompt::{self, ConflictChoice};
-use crate::trust;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -27,42 +27,14 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     // Get main worktree path for trust operations
     let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
 
-    // Initial config load for trust check
-    let initial_config = config::load(&repo_root)?.unwrap_or_default();
-
-    // Trust check for full configuration (before interactive mode)
-    if initial_config.hooks.has_hooks()
-        && !args.no_setup
-        && !trust::is_trusted(&main_worktree_path, &initial_config)?
-    {
-        // Display hooks that need trust
-        hook::display_hooks_for_review(&initial_config.hooks);
-
-        eprintln!();
-        eprintln!("Error: Configuration is not trusted.");
-        eprintln!("The .gwtx.yaml file contains hooks that can execute arbitrary commands.");
-        eprintln!("For security, you must explicitly review and trust the configuration.");
-        eprintln!();
-        eprintln!("To trust this configuration, run:");
-        eprintln!("  gwtx trust");
-        eprintln!();
-        eprintln!("Or skip hooks:");
-        eprintln!("  gwtx add --no-setup <path>");
-        return Err(Error::HooksNotTrusted);
-    }
-
-    // TOCTOU protection: reload config immediately before use
-    // This prevents attacks where .gwtx.yaml is modified between trust check and execution
-    let config = config::load(&repo_root)?.unwrap_or_default();
-    if config.hooks.has_hooks()
-        && !args.no_setup
-        && !trust::is_trusted(&main_worktree_path, &config)?
-    {
-        eprintln!("\nError: .gwtx.yaml was modified after trust check.");
-        eprintln!("For security, configuration must be re-trusted after any changes.");
-        eprintln!("Run: gwtx trust");
-        return Err(Error::HooksNotTrusted);
-    }
+    let config = load_config_with_trust_check(
+        &repo_root,
+        &main_worktree_path,
+        !args.no_setup,
+        TrustHint::SkipHooks {
+            command: "gwtx add --no-setup <path>",
+        },
+    )?;
 
     // Handle interactive mode
     let worktree_path = if args.interactive {

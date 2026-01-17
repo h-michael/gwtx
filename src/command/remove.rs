@@ -1,12 +1,11 @@
 use crate::cli::RemoveArgs;
 use crate::color::ColorConfig;
-use crate::config;
+use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::error::{Error, Result};
 use crate::git::{self, WorktreeInfo};
 use crate::hook::{self, HookEnv};
 use crate::output::Output;
 use crate::prompt::{self, SafetyWarning};
-use crate::trust;
 
 use std::path::PathBuf;
 
@@ -22,33 +21,8 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
     // Get main worktree path for trust operations
     let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
 
-    // Initial config load for trust check
-    let initial_config = config::load(&repo_root)?.unwrap_or_default();
-
-    // Trust check for configuration
-    if initial_config.hooks.has_hooks() && !trust::is_trusted(&main_worktree_path, &initial_config)?
-    {
-        // Display hooks that need trust
-        hook::display_hooks_for_review(&initial_config.hooks);
-
-        eprintln!();
-        eprintln!("Error: Configuration is not trusted.");
-        eprintln!("The .gwtx.yaml file contains hooks that can execute arbitrary commands.");
-        eprintln!("For security, you must explicitly review and trust the configuration.");
-        eprintln!();
-        eprintln!("To trust this configuration, run:");
-        eprintln!("  gwtx trust");
-        return Err(Error::HooksNotTrusted);
-    }
-
-    // TOCTOU protection: reload config immediately before use
-    let config = config::load(&repo_root)?.unwrap_or_default();
-    if config.hooks.has_hooks() && !trust::is_trusted(&main_worktree_path, &config)? {
-        eprintln!("\nError: .gwtx.yaml was modified after trust check.");
-        eprintln!("For security, configuration must be re-trusted after any changes.");
-        eprintln!("Run: gwtx trust");
-        return Err(Error::HooksNotTrusted);
-    }
+    let config =
+        load_config_with_trust_check(&repo_root, &main_worktree_path, true, TrustHint::None)?;
 
     let worktrees = git::list_worktrees()?;
 
@@ -125,7 +99,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
             output.dry_run(&format!("Would remove: {}", path.display()));
         } else {
             let use_force = args.force || !warnings.is_empty();
-            remove_worktree(path, use_force)?;
+            git::worktree_remove_checked(path, use_force)?;
             output.remove(path);
         }
 
@@ -240,27 +214,4 @@ fn display_warning(output: &Output, warning: &SafetyWarning) {
             &format!("{} unpushed commit(s)", warning.unpushed_count),
         );
     }
-}
-
-fn remove_worktree(path: &PathBuf, force: bool) -> Result<()> {
-    use std::process::Command;
-
-    let mut cmd = Command::new("git");
-    cmd.args(["worktree", "remove"]);
-
-    if force {
-        cmd.arg("--force");
-    }
-
-    cmd.arg(path);
-
-    let output = cmd.output()?;
-
-    if !output.status.success() {
-        return Err(Error::GitWorktreeRemoveFailed {
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        });
-    }
-
-    Ok(())
 }
