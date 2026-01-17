@@ -242,10 +242,10 @@ pub(crate) fn display_hooks_for_review(hooks: &Hooks) {
     if use_color {
         eprintln!(
             "{}",
-            ColorScheme::warning("WARNING: Untrusted hooks detected in .gwtx.toml")
+            ColorScheme::warning("WARNING: Untrusted hooks detected in .gwtx.yaml")
         );
     } else {
-        eprintln!("WARNING: Untrusted hooks detected in .gwtx.toml");
+        eprintln!("WARNING: Untrusted hooks detected in .gwtx.yaml");
     }
     eprintln!();
     eprintln!("Trusting will allow ALL hooks in this file to execute:");

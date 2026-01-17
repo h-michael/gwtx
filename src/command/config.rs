@@ -22,7 +22,7 @@ pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
     }
 }
 
-/// Validate .gwtx.toml configuration.
+/// Validate .gwtx.yaml configuration.
 fn validate() -> Result<()> {
     if !git::is_inside_repo() {
         return Err(Error::NotInGitRepo);
