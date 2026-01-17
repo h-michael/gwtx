@@ -23,7 +23,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
             return Ok(());
         }
 
-        let main_worktree_path = git::main_worktree_path()?;
+        let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
         let is_trusted = trust::is_trusted(&main_worktree_path, &config.hooks)?;
         if is_trusted {
             return Ok(());
@@ -37,7 +37,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
         None => git::repository_root()?,
     };
 
-    let main_worktree_path = git::main_worktree_path()?;
+    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
 
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),

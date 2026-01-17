@@ -25,7 +25,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     let repo_root = git::repository_root()?;
 
     // Get main worktree path for trust operations
-    let main_worktree_path = git::main_worktree_path()?;
+    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
 
     // Initial config load for trust check
     let initial_config = config::load(&repo_root)?.unwrap_or_default();

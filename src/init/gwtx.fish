@@ -8,7 +8,9 @@ function __gwtx_cmd
 end
 
 function gwtx
-  if test (count $argv) -gt 0; and test "$argv[1]" = "switch"
+  if test (count $argv) -eq 1; and test "$argv[1]" = "switch"
+    # Only use interactive path selection when "switch" has no additional arguments
+    # If any arguments are provided (like --help), pass them to the command
     set -l dest (__gwtx_cmd path)
     if test -n "$dest"
       builtin cd "$dest"

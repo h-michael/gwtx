@@ -8,7 +8,9 @@ __gwtx_cmd() {
 }
 
 gwtx() {
-  if [ "${1:-}" = "switch" ]; then
+  if [ "${1:-}" = "switch" ] && [ $# -eq 1 ]; then
+    # Only use interactive path selection when "switch" has no additional arguments
+    # If any arguments are provided (like --help), pass them to the command
     local dest
     dest=$(__gwtx_cmd path) || return $?
     if [ -n "$dest" ]; then

@@ -10,7 +10,9 @@ function __gwtx_cmd {
 
 function gwtx {
   param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Args)
-  if ($Args.Count -gt 0 -and $Args[0] -eq "switch") {
+  if ($Args.Count -eq 1 -and $Args[0] -eq "switch") {
+    # Only use interactive path selection when "switch" has no additional arguments
+    # If any arguments are provided (like --help), pass them to the command
     $dest = __gwtx_cmd path
     if ($dest) {
       Set-Location $dest

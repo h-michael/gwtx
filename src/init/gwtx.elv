@@ -6,7 +6,9 @@ if (has-external ::GWTX::) {
 fn __gwtx_cmd {|@args| ::GWTX:: $@args }
 
 fn gwtx {|@args|
-  if (and (gt (count $@args) 0) (eq $args[0] 'switch')) {
+  if (and (eq (count $@args) 1) (eq $args[0] 'switch')) {
+    # Only use interactive path selection when "switch" has no additional arguments
+    # If any arguments are provided (like --help), pass them to the command
     var dest = (::GWTX:: path)
     if (not (eq $dest '')) {
       cd $dest

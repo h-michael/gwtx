@@ -1,7 +1,7 @@
 use crate::cli::AddArgs;
 use crate::error::{Error, Result};
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Run `git worktree add` with CLI arguments.
@@ -204,6 +204,7 @@ pub(crate) fn list_tracked_files() -> Result<Vec<PathBuf>> {
 /// - Linked worktree 1: `/home/user/myrepo-feature` → primary_worktree_path = `/home/user/myrepo`
 /// - Linked worktree 2: `/home/user/myrepo-bugfix` → primary_worktree_path = `/home/user/myrepo`
 /// - All three worktrees share trust files under `~/.local/share/gwtx/trusted/-home-user-myrepo/`
+#[allow(dead_code)]
 pub(crate) fn main_worktree_path() -> Result<PathBuf> {
     // Get list of all worktrees in porcelain format
     // Output is multiple lines per worktree:
@@ -214,8 +215,37 @@ pub(crate) fn main_worktree_path() -> Result<PathBuf> {
     //
     //   worktree /path/to/another-worktree
     //   ...
+    // Find the repository root first, then use main_worktree_path_for to get the main worktree
+    let repo_root = repository_root()?;
+    main_worktree_path_for(&repo_root)
+}
+
+/// Get the main worktree path for a specific repository directory.
+///
+/// Executes git commands within the given repo_root directory, making this safe to call
+/// from outside the repository. This is used to resolve the main worktree when a path is
+/// explicitly provided to commands like `gwtx trust --path /path/to/repo`.
+///
+/// **Difference from main_worktree_path()**:
+/// - `main_worktree_path()`: Uses git auto-discovery from current directory
+/// - `main_worktree_path_for(&Path)`: Uses specified repo_root (explicit context)
+///
+/// Both return the path of the main worktree (where `.git` is a directory). All linked
+/// worktrees created from this main worktree contain a `.git` file pointing to the main
+/// worktree's `.git` directory.
+pub(crate) fn main_worktree_path_for(repo_root: &Path) -> Result<PathBuf> {
+    // Get list of all worktrees in the specified repository
+    // Output is multiple lines per worktree:
+    //   worktree /path/to/worktree
+    //   HEAD <commit-hash>
+    //   branch refs/heads/...
+    //   [detached]
+    //
+    //   worktree /path/to/another-worktree
+    //   ...
     let output = Command::new("git")
         .args(["worktree", "list", "--porcelain"])
+        .current_dir(repo_root)
         .output()?;
 
     if !output.status.success() {

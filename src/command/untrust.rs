@@ -21,7 +21,7 @@ pub(crate) fn run(args: UntrustArgs) -> Result<()> {
         None => git::repository_root()?,
     };
 
-    let main_worktree_path = git::main_worktree_path()?;
+    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
 
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),
