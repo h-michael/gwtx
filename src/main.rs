@@ -5,6 +5,7 @@ mod config;
 mod error;
 mod git;
 mod hook;
+mod init;
 mod operation;
 mod output;
 mod prompt;
@@ -57,6 +58,8 @@ fn main() -> ExitCode {
             let color_config = color::ColorConfig::new(color_choice);
             command::list(list_args, color_config)
         }
+        cli::Command::Path => command::path(),
+        cli::Command::Switch => command::switch(),
         cli::Command::Config(config_args) => command::config(config_args.command),
         cli::Command::Trust(trust_args) => {
             let color_choice = if trust_args.no_color {
@@ -69,6 +72,7 @@ fn main() -> ExitCode {
         }
         cli::Command::Untrust(untrust_args) => command::untrust(untrust_args),
         cli::Command::Completions { shell } => command::completions(shell),
+        cli::Command::Init(init_args) => command::init(init_args),
         cli::Command::Man => command::man(),
     };
 
@@ -87,6 +91,12 @@ fn main() -> ExitCode {
         }
         Err(error::Error::HooksNotTrusted) => {
             // Detailed message already displayed by command
+            ExitCode::FAILURE
+        }
+        Err(error::Error::TrustCheckFailed) => ExitCode::from(1),
+        Err(error::Error::SwitchRequiresShellIntegration) => {
+            eprintln!("Error: {}", error::Error::SwitchRequiresShellIntegration);
+            eprintln!("\nFor setup instructions, run: gwtx init --help");
             ExitCode::FAILURE
         }
         Err(e) => {

@@ -3,18 +3,48 @@ use crate::color::{ColorConfig, ColorScheme};
 use crate::{config, error::Error, error::Result, git, prompt, trust};
 
 pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
+    if args.check {
+        let repo_root = match args.path {
+            Some(p) => p.canonicalize()?,
+            None => {
+                if !git::is_inside_repo() {
+                    return Ok(());
+                }
+                git::repository_root()?
+            }
+        };
+
+        let config = match config::load(&repo_root)? {
+            Some(config) => config,
+            None => return Ok(()),
+        };
+
+        if !config.hooks.has_hooks() {
+            return Ok(());
+        }
+
+        let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
+        let is_trusted = trust::is_trusted(&main_worktree_path, &config.hooks)?;
+        if is_trusted {
+            return Ok(());
+        }
+
+        return Err(Error::TrustCheckFailed);
+    }
+
     let repo_root = match args.path {
         Some(p) => p.canonicalize()?,
         None => git::repository_root()?,
     };
+
+    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
 
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),
     })?;
 
     if !config.hooks.has_hooks() {
-        println!("No hooks defined in .gwtx.toml");
-        return Ok(());
+        return Err(Error::NoHooksDefined);
     }
 
     if args.show {
@@ -142,7 +172,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
             }
         }
 
-        let is_trusted = trust::is_trusted(&repo_root, &config.hooks)?;
+        let is_trusted = trust::is_trusted(&main_worktree_path, &config.hooks)?;
         println!(
             "\nTrust status: {}",
             if is_trusted { "trusted" } else { "not trusted" }
@@ -288,7 +318,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
     // Prompt for confirmation
     if prompt::is_interactive() {
         if prompt::prompt_trust_hooks(&repo_root)? {
-            trust::trust(&repo_root, &config.hooks)?;
+            trust::trust(&main_worktree_path, &config.hooks)?;
             println!("\n✓ Hooks trusted for: {}", repo_root.display());
             println!("These hooks will now run automatically on gwtx add/remove commands.");
         } else {

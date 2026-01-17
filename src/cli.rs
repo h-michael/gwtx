@@ -54,7 +54,16 @@ EXAMPLES:
         Trust hooks in .gwtx.yaml (required for hook execution)
 
     gwtx untrust --list
-        List all trusted repositories")]
+        List all trusted repositories
+
+    gwtx switch
+        Select a worktree and switch to it (requires shell integration)
+
+    cd \"$(gwtx path)\"
+        Select a worktree and print its path
+
+    eval \"$(gwtx init bash)\"
+        Enable shell completions and trust warnings")]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -74,6 +83,12 @@ pub(crate) enum Command {
     #[command(visible_alias = "ls")]
     List(ListArgs),
 
+    /// Select a worktree and print its path
+    Path,
+
+    /// Switch to a selected worktree (requires shell integration)
+    Switch,
+
     /// Manage .gwtx.yaml configuration
     Config(ConfigArgs),
 
@@ -88,6 +103,9 @@ pub(crate) enum Command {
         /// Shell to generate completions for
         shell: Shell,
     },
+
+    /// Print shell init script (completions + trust warning hook)
+    Init(InitArgs),
 
     /// Generate man page
     Man,
@@ -458,6 +476,9 @@ EXAMPLES:
     gwtx trust --show
         Show hooks and trust status without trusting
 
+    gwtx trust --check
+        Exit 0 if hooks are trusted, 1 if trust is required
+
     gwtx trust /path/to/repo
         Trust hooks for a specific repository")]
 pub(crate) struct TrustArgs {
@@ -467,6 +488,10 @@ pub(crate) struct TrustArgs {
     /// Show trusted hooks without trusting
     #[arg(long)]
     pub show: bool,
+
+    /// Check trust status (exit 0 if trusted, 1 if untrusted)
+    #[arg(long, conflicts_with = "show")]
+    pub check: bool,
 
     /// When to use colored output (always, auto, never)
     #[arg(
@@ -480,6 +505,75 @@ pub(crate) struct TrustArgs {
     /// Disable colored output (equivalent to --color=never)
     #[arg(long)]
     pub no_color: bool,
+}
+
+/// Arguments for the `init` subcommand.
+#[derive(Parser, Debug)]
+#[command(after_help = "\
+SHELL INTEGRATION:
+    gwtx init enables shell integration features:
+    - Shell completions for all gwtx commands and options
+    - gwtx switch command for interactive worktree switching
+    - Automatic trust warnings when entering directories with untrusted hooks
+
+INSTALLATION:
+    Add to your shell configuration file:
+
+    Bash (~/.bashrc or ~/.bash_profile):
+      eval \"$(gwtx init bash)\"
+
+    Zsh (~/.zshrc):
+      eval \"$(gwtx init zsh)\"
+
+    Fish (~/.config/fish/config.fish):
+      gwtx init fish | source
+
+    PowerShell (profile, open with: $PROFILE):
+      Invoke-Expression (& gwtx init powershell | Out-String)
+
+    Elvish (~/.config/elvish/rc.elv):
+      eval (gwtx init elvish | slurp)
+
+FEATURES:
+    Shell Completions
+        Provides intelligent tab completion for gwtx commands and options.
+        Works across all supported shells.
+
+    gwtx switch Command
+        Interactive fuzzy finder to select and switch to a worktree.
+        Unix: Uses skim for advanced fuzzy finding
+        Windows: Uses selection menu from inquire
+
+        Note: gwtx switch requires shell integration.
+        Without shell integration, use: cd \"$(gwtx path)\"
+
+    Trust Warnings
+        When entering a directory with untrusted hooks, gwtx displays a warning.
+        Review and trust hooks using: gwtx trust
+
+EXAMPLES:
+    # Show init script for bash (add to ~/.bashrc)
+    gwtx init bash
+
+    # Show init script for zsh (add to ~/.zshrc)
+    gwtx init zsh
+
+    # Show full init script (used by shell config, not for manual viewing)
+    gwtx init bash --print-full-init
+
+TROUBLESHOOTING:
+    If shell integration doesn't work after installation:
+    1. Restart your shell or source the config file manually
+    2. Verify the command is in your shell PATH: command -v gwtx
+    3. Check shell config file was updated correctly
+    4. Review shell-specific documentation: gwtx help init")]
+pub(crate) struct InitArgs {
+    /// Shell to generate init script for
+    pub shell: Shell,
+
+    /// Print the full init script instead of the stub
+    #[arg(long)]
+    pub print_full_init: bool,
 }
 
 /// Arguments for the `untrust` subcommand.

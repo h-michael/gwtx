@@ -19,11 +19,16 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
 
     let repo_root = git::repository_root()?;
 
+    // Get main worktree path for trust operations
+    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
+
     // Initial config load for trust check
     let initial_config = config::load(&repo_root)?.unwrap_or_default();
 
     // Trust check for hooks
-    if initial_config.hooks.has_hooks() && !trust::is_trusted(&repo_root, &initial_config.hooks)? {
+    if initial_config.hooks.has_hooks()
+        && !trust::is_trusted(&main_worktree_path, &initial_config.hooks)?
+    {
         // Display hooks that need trust
         hook::display_hooks_for_review(&initial_config.hooks);
 
@@ -39,7 +44,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
 
     // TOCTOU protection: reload config immediately before use
     let config = config::load(&repo_root)?.unwrap_or_default();
-    if config.hooks.has_hooks() && !trust::is_trusted(&repo_root, &config.hooks)? {
+    if config.hooks.has_hooks() && !trust::is_trusted(&main_worktree_path, &config.hooks)? {
         eprintln!("\nError: .gwtx.toml was modified after trust check.");
         eprintln!("For security, hooks must be re-trusted after any changes.");
         eprintln!("Run: gwtx trust");
@@ -156,7 +161,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
 
 fn select_worktrees_interactively(worktrees: &[WorktreeInfo]) -> Result<Vec<PathBuf>> {
     // Clear screen before entering interactive mode
-    prompt::clear_screen_interactive();
+    prompt::clear_screen_interactive()?;
 
     let paths = prompt::prompt_worktree_selection(worktrees)?;
     Ok(paths)
