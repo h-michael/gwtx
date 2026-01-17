@@ -187,6 +187,106 @@ pub(crate) fn list_tracked_files() -> Result<Vec<PathBuf>> {
         .collect())
 }
 
+/// Get the main worktree path for the current repository.
+///
+/// In a git worktree setup, this returns the path of the main worktree (where `.git` is
+/// a directory, not a file). All linked worktrees created from this main worktree contain
+/// a `.git` file that references the main worktree's `.git` directory.
+///
+/// In a regular (non-worktree) repository, this returns the same path as `repository_root()`.
+///
+/// **Used by trust system**: The trust system uses this path to group hooks across all
+/// worktrees from the same source. This allows multiple worktrees to share the same
+/// trust state without requiring separate approvals for each worktree.
+///
+/// **Example**:
+/// - Main worktree: `/home/user/myrepo` → primary_worktree_path = `/home/user/myrepo`
+/// - Linked worktree 1: `/home/user/myrepo-feature` → primary_worktree_path = `/home/user/myrepo`
+/// - Linked worktree 2: `/home/user/myrepo-bugfix` → primary_worktree_path = `/home/user/myrepo`
+/// - All three worktrees share trust files under `~/.local/share/gwtx/trusted/-home-user-myrepo/`
+pub(crate) fn main_worktree_path() -> Result<PathBuf> {
+    // Get list of all worktrees in porcelain format
+    // Output is multiple lines per worktree:
+    //   worktree /path/to/worktree
+    //   HEAD <commit-hash>
+    //   branch refs/heads/...
+    //   [detached]
+    //
+    //   worktree /path/to/another-worktree
+    //   ...
+    let output = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(Error::NotInGitRepo);
+    }
+
+    let lines = parse_output_lines(&output.stdout);
+
+    for line in lines {
+        // Extract worktree paths from "worktree /path/..." lines
+        if !line.starts_with("worktree ") {
+            continue;
+        }
+
+        let path_str = line.strip_prefix("worktree ").unwrap_or("").trim();
+        if path_str.is_empty() {
+            continue;
+        }
+
+        let path = PathBuf::from(path_str);
+
+        // Skip non-existent worktrees (deleted/broken entries)
+        if !path.exists() {
+            continue;
+        }
+
+        // Determine if this worktree is the primary by checking git-dir
+        // Primary: `git rev-parse --git-dir` returns ".git" (relative) or absolute path ending in .git
+        // Linked:  `git rev-parse --git-dir` returns ".git/worktrees/..." (relative) or absolute path
+        let git_dir_output = Command::new("git")
+            .args(["rev-parse", "--git-dir"])
+            .current_dir(&path)
+            .output();
+
+        let git_dir_output = match git_dir_output {
+            Ok(output) if output.status.success() => output,
+            _ => continue, // Skip if git command fails
+        };
+
+        let git_dir = String::from_utf8_lossy(&git_dir_output.stdout)
+            .trim()
+            .to_string();
+        if git_dir.is_empty() {
+            continue;
+        }
+
+        // Check if this is the primary worktree by examining git-dir file name
+        // file_name() extracts just the final component:
+        //   ".git" → ".git" ✓ (primary)
+        //   "/path/to/.git" → ".git" ✓ (primary, absolute)
+        //   ".git/worktrees/name" → "name" ✗ (linked)
+        //   "/path/to/.git/worktrees/name" → "name" ✗ (linked)
+        let git_dir_path = PathBuf::from(&git_dir);
+        if git_dir_path.file_name() == Some(std::ffi::OsStr::new(".git")) {
+            // Found the primary worktree. Canonicalize to get absolute path.
+            // Canonicalization ensures consistent path representation across different shells
+            // and symlink resolutions (important for trust hash consistency).
+            return path.canonicalize().map_err(|e| {
+                Error::Internal(format!(
+                    "Failed to canonicalize primary worktree path '{}': {}",
+                    path.display(),
+                    e
+                ))
+            });
+        }
+    }
+
+    // No primary worktree found (shouldn't happen in valid repo)
+    Err(Error::NotInGitRepo)
+}
+
 /// Information about a worktree.
 #[derive(Debug, Clone)]
 pub(crate) struct WorktreeInfo {

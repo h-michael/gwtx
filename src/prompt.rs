@@ -21,9 +21,11 @@ use std::sync::Arc;
 #[cfg(windows)]
 use inquire::{MultiSelect, Select};
 
-/// Check if stdin and stdout are connected to a terminal.
+/// Check if stdin is connected to a terminal.
+/// Note: We only check stdin because skim/inquire can work with stdout redirected
+/// (e.g., in command substitution like `$(gwtx path)`), as they write to /dev/tty directly.
 pub(crate) fn is_interactive() -> bool {
-    io::stdin().is_terminal() && io::stdout().is_terminal()
+    io::stdin().is_terminal()
 }
 
 /// Convert inquire error to our error type.
@@ -38,36 +40,46 @@ fn convert_inquire_error(e: InquireError) -> Error {
 
 /// Clear screen (equivalent to termion's clear::All + cursor::Goto(1, 1)).
 #[cfg(unix)]
-fn clear_screen() {
+fn clear_screen() -> Result<()> {
+    use std::fs::OpenOptions;
     use std::io::Write;
+
+    // Write to /dev/tty instead of stdout to avoid interfering with command output
+    // This allows `gwtx path` to work correctly in command substitution
+    let mut tty = OpenOptions::new()
+        .write(true)
+        .open("/dev/tty")
+        .map_err(|e| Error::Internal(format!("Failed to open /dev/tty: {}", e)))?;
+
     // ANSI escape sequences:
     // \x1B[2J = clear entire screen
     // \x1B[H = move cursor to home position (1, 1)
-    print!("\x1B[2J\x1B[H");
-    std::io::stdout().flush().ok();
+    write!(tty, "\x1B[2J\x1B[H")
+        .map_err(|e| Error::Internal(format!("Failed to write to /dev/tty: {}", e)))?;
+
+    tty.flush()
+        .map_err(|e| Error::Internal(format!("Failed to flush /dev/tty: {}", e)))?;
+
+    Ok(())
 }
 
 /// Clear screen before entering interactive mode.
 #[cfg(unix)]
-pub(crate) fn clear_screen_interactive() {
-    clear_screen();
+pub(crate) fn clear_screen_interactive() -> Result<()> {
+    clear_screen()
 }
 
 /// Clear screen before entering interactive mode (no-op on Windows).
 #[cfg(windows)]
-pub(crate) fn clear_screen_interactive() {
-    // No-op on Windows
+pub(crate) fn clear_screen_interactive() -> Result<()> {
+    Ok(())
 }
 
 // Unix: skim-based selector (fuzzy search enabled)
 #[cfg(unix)]
 fn skim_select(prompt: &str, items: Vec<String>) -> Result<String> {
-    // Calculate height: item count + 2 (prompt/info lines), capped at 20
-    let height = (items.len() + 2).min(20);
-
     let options = SkimOptionsBuilder::default()
         .prompt(prompt.to_string())
-        .height(format!("{}", height))
         .multi(false)
         .reverse(true)
         .build()
@@ -81,8 +93,8 @@ fn skim_select(prompt: &str, items: Vec<String>) -> Result<String> {
 
     let output = Skim::run_with(&options, Some(items));
 
-    // Clear screen after selection (same as InteractiveScreen.redraw())
-    clear_screen();
+    // Note: Do not clear screen here to preserve shell buffer/history
+    // skim handles terminal cleanup automatically on exit
 
     match output {
         Some(out) if out.is_abort => Err(Error::Aborted),
@@ -96,12 +108,8 @@ fn skim_select(prompt: &str, items: Vec<String>) -> Result<String> {
 // Unix: skim-based selector (fuzzy search disabled for fixed choices)
 #[cfg(unix)]
 fn skim_select_simple(prompt: &str, items: Vec<String>) -> Result<String> {
-    // Calculate height: item count + 2 (prompt/info lines), capped at 20
-    let height = (items.len() + 2).min(20);
-
     let options = SkimOptionsBuilder::default()
         .prompt(prompt.to_string())
-        .height(format!("{}", height))
         .multi(false)
         .reverse(true)
         .exact(true) // Disable fuzzy search
@@ -117,8 +125,8 @@ fn skim_select_simple(prompt: &str, items: Vec<String>) -> Result<String> {
 
     let output = Skim::run_with(&options, Some(items));
 
-    // Clear screen after selection (same as InteractiveScreen.redraw())
-    clear_screen();
+    // Note: Do not clear screen here to preserve shell buffer/history
+    // skim handles terminal cleanup automatically on exit
 
     match output {
         Some(out) if out.is_abort => Err(Error::Aborted),
@@ -455,6 +463,111 @@ fn build_worktree_items(worktrees: &[crate::git::WorktreeInfo]) -> Result<Vec<Wo
     Ok(items)
 }
 
+/// Build WorktreeItem list for single selection (includes main worktree).
+fn build_worktree_items_for_cd(
+    worktrees: &[crate::git::WorktreeInfo],
+) -> Result<Vec<WorktreeItem>> {
+    let items: Vec<WorktreeItem> = worktrees
+        .iter()
+        .enumerate()
+        .map(|(index, wt)| {
+            let branch_info = wt
+                .branch
+                .as_ref()
+                .and_then(|b| b.strip_prefix("refs/heads/"))
+                .unwrap_or("(detached)");
+            let main_info = if wt.is_main { " [main]" } else { "" };
+            let lock_info = if wt.is_locked { " [locked]" } else { "" };
+            WorktreeItem {
+                display: format!(
+                    "{} ({}){}{}",
+                    wt.path.display(),
+                    branch_info,
+                    main_info,
+                    lock_info
+                ),
+                path: wt.path.clone(),
+                index,
+            }
+        })
+        .collect();
+
+    if items.is_empty() {
+        return Err(Error::NoWorktreesFound);
+    }
+
+    Ok(items)
+}
+
+/// Prompt user to select a single worktree (Unix: skim).
+#[cfg(unix)]
+pub(crate) fn prompt_worktree_single_selection(
+    worktrees: &[crate::git::WorktreeInfo],
+) -> Result<PathBuf> {
+    if !is_interactive() {
+        return Err(Error::InteractiveRequired {
+            command: "gwtx path",
+        });
+    }
+
+    let items = build_worktree_items_for_cd(worktrees)?;
+
+    let options = SkimOptionsBuilder::default()
+        .prompt("Select worktree: ".to_string())
+        .multi(false)
+        .reverse(true)
+        .build()
+        .map_err(|e| Error::Selector {
+            message: format!("Failed to build skim options: {}", e),
+        })?;
+
+    let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
+    for item in &items {
+        let _ = tx.send(Arc::new(item.clone()));
+    }
+    drop(tx);
+
+    let output = Skim::run_with(&options, Some(rx));
+
+    // Note: Do not clear screen here to preserve shell buffer/history
+    // skim handles terminal cleanup automatically on exit
+
+    match output {
+        Some(out) if out.is_abort => Err(Error::Aborted),
+        Some(out) if out.selected_items.is_empty() => Err(Error::Aborted),
+        Some(out) => {
+            let selected_display = out.selected_items[0].output().to_string();
+            items
+                .iter()
+                .find(|item| item.display == selected_display)
+                .map(|item| item.path.clone())
+                .ok_or_else(|| Error::Internal("Selected worktree not found".to_string()))
+        }
+        None => Err(Error::Aborted),
+    }
+}
+
+/// Prompt user to select a single worktree (Windows: inquire fallback).
+#[cfg(windows)]
+pub(crate) fn prompt_worktree_single_selection(
+    worktrees: &[crate::git::WorktreeInfo],
+) -> Result<PathBuf> {
+    if !is_interactive() {
+        return Err(Error::InteractiveRequired {
+            command: "gwtx path",
+        });
+    }
+
+    let items = build_worktree_items_for_cd(worktrees)?;
+
+    let selected = Select::new("Select worktree:", items)
+        .without_help_message()
+        .prompt()
+        .map_err(convert_inquire_error)?;
+
+    Ok(selected.path)
+}
+
 /// Prompt user to select worktrees to remove (Unix: skim).
 #[cfg(unix)]
 pub(crate) fn prompt_worktree_selection(
@@ -466,12 +579,8 @@ pub(crate) fn prompt_worktree_selection(
 
     let items = build_worktree_items(worktrees)?;
 
-    // Calculate height: item count + 2 (prompt/info lines), capped at 20
-    let height = (items.len() + 2).min(20);
-
     let options = SkimOptionsBuilder::default()
         .prompt("Select worktrees to remove: ".to_string())
-        .height(format!("{}", height))
         .multi(true)
         .reverse(true)
         .no_multi(false) // Ensure multi-select is enabled
@@ -488,8 +597,8 @@ pub(crate) fn prompt_worktree_selection(
 
     let output = Skim::run_with(&options, Some(rx));
 
-    // Clear screen after selection (same as InteractiveScreen.redraw())
-    clear_screen();
+    // Note: Do not clear screen here to preserve shell buffer/history
+    // skim handles terminal cleanup automatically on exit
 
     match output {
         Some(out) if out.is_abort => Err(Error::Aborted),
@@ -738,6 +847,82 @@ mod tests {
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::NoWorktreesToRemove));
+    }
+
+    #[test]
+    fn test_build_worktree_items_for_cd_includes_main() {
+        let worktrees = vec![WorktreeInfo {
+            path: PathBuf::from("/repo/.git"),
+            head: "abc123".to_string(),
+            branch: Some("refs/heads/main".to_string()),
+            is_main: true,
+            is_locked: false,
+        }];
+
+        let result = build_worktree_items_for_cd(&worktrees).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].display.contains("[main]"));
+    }
+
+    #[test]
+    fn test_build_worktree_items_for_cd_empty_list() {
+        let worktrees: Vec<WorktreeInfo> = vec![];
+
+        let result = build_worktree_items_for_cd(&worktrees);
+
+        assert!(matches!(result.unwrap_err(), Error::NoWorktreesFound));
+    }
+
+    #[test]
+    fn test_build_worktree_items_for_cd_multiple_worktrees() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-branch"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/locked-branch"),
+                head: "ghi789".to_string(),
+                branch: Some("refs/heads/locked".to_string()),
+                is_main: false,
+                is_locked: true,
+            },
+        ];
+
+        let result = build_worktree_items_for_cd(&worktrees).unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert!(result[0].display.contains("[main]"));
+        assert!(!result[1].display.contains("[main]"));
+        assert!(!result[1].display.contains("[locked]"));
+        assert!(result[2].display.contains("[locked]"));
+    }
+
+    #[test]
+    fn test_build_worktree_items_for_cd_detached_head() {
+        let worktrees = vec![WorktreeInfo {
+            path: PathBuf::from("/repo/detached"),
+            head: "abc123".to_string(),
+            branch: None,
+            is_main: false,
+            is_locked: false,
+        }];
+
+        let result = build_worktree_items_for_cd(&worktrees).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].display.contains("(detached)"));
     }
 
     #[cfg(unix)]

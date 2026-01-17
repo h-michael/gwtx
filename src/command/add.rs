@@ -24,13 +24,16 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     // Get repository root
     let repo_root = git::repository_root()?;
 
+    // Get main worktree path for trust operations
+    let main_worktree_path = git::main_worktree_path()?;
+
     // Initial config load for trust check
     let initial_config = config::load(&repo_root)?.unwrap_or_default();
 
     // Trust check for hooks (before interactive mode)
     if initial_config.hooks.has_hooks()
         && !args.no_setup
-        && !trust::is_trusted(&repo_root, &initial_config.hooks)?
+        && !trust::is_trusted(&main_worktree_path, &initial_config.hooks)?
     {
         // Display hooks that need trust
         hook::display_hooks_for_review(&initial_config.hooks);
@@ -51,7 +54,9 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     // TOCTOU protection: reload config immediately before use
     // This prevents attacks where .gwtx.toml is modified between trust check and execution
     let config = config::load(&repo_root)?.unwrap_or_default();
-    if config.hooks.has_hooks() && !args.no_setup && !trust::is_trusted(&repo_root, &config.hooks)?
+    if config.hooks.has_hooks()
+        && !args.no_setup
+        && !trust::is_trusted(&main_worktree_path, &config.hooks)?
     {
         eprintln!("\nError: .gwtx.toml was modified after trust check.");
         eprintln!("For security, hooks must be re-trusted after any changes.");
@@ -256,9 +261,6 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
 /// Run interactive mode to select branch and path.
 fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
-    // Clear screen before entering interactive mode
-    prompt::clear_screen_interactive();
-
     // Get list of local and remote branches
     let local_branches = git::list_branches()?;
     let remote_branches = git::list_remote_branches()?;
