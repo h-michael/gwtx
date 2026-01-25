@@ -20,6 +20,9 @@ pub(crate) struct HookEnv {
     pub branch: Option<String>,
     /// Repository root path
     pub repo_root: String,
+    /// Windows-only: override hook shell selection
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub hook_shell: Option<String>,
 }
 
 impl HookEnv {
@@ -32,40 +35,80 @@ impl HookEnv {
     /// - `{{repo_root}}`: Repository root path
     ///
     /// All values are automatically shell-escaped to prevent command injection.
-    fn expand_template(&self, cmd: &str) -> String {
+    fn expand_template_with<E>(&self, cmd: &str, escape: E) -> String
+    where
+        E: Fn(&str) -> String,
+    {
         let mut result = cmd.to_string();
 
         // Replace template variables with shell-escaped values
-        result = result.replace("{{worktree_path}}", &shell_escape(&self.worktree_path));
-        result = result.replace("{{worktree_name}}", &shell_escape(&self.worktree_name));
-        result = result.replace("{{repo_root}}", &shell_escape(&self.repo_root));
+        result = result.replace("{{worktree_path}}", &escape(&self.worktree_path));
+        result = result.replace("{{worktree_name}}", &escape(&self.worktree_name));
+        result = result.replace("{{repo_root}}", &escape(&self.repo_root));
 
         if let Some(branch) = &self.branch {
-            result = result.replace("{{branch}}", &shell_escape(branch));
+            result = result.replace("{{branch}}", &escape(branch));
         } else {
             result = result.replace("{{branch}}", "");
         }
 
         result
     }
+
+    #[cfg(unix)]
+    fn expand_template(&self, cmd: &str) -> String {
+        self.expand_template_with(cmd, shell_escape)
+    }
+
+    #[cfg(windows)]
+    fn expand_template(&self, cmd: &str) -> String {
+        self.expand_template_with(cmd, powershell_escape)
+    }
 }
 
 /// Escape a string for safe use in shell commands.
 ///
-/// Uses POSIX sh single quote escaping. This method wraps the entire
-/// string in single quotes and escapes any single quotes within the string.
-///
 /// # Safety
 /// This prevents command injection by ensuring special shell characters
-/// (like `$`, `` ` ``, `&`, `|`, etc.) are treated as literal text.
-///
-/// # Platform Support
-/// - **Unix/Linux**: Uses POSIX sh-compatible escaping
-/// - **Windows**: Hooks are not supported on Windows
+/// are treated as literal text.
+#[cfg(unix)]
 fn shell_escape(s: &str) -> String {
-    // Use single quotes and escape any single quotes in the string
-    // This works by: ending quote, escaped quote, start quote
+    // POSIX sh single-quote escaping: close quote, escape, reopen.
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+#[cfg(windows)]
+fn posix_shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+#[cfg(windows)]
+fn powershell_escape(s: &str) -> String {
+    // PowerShell single-quote escaping: double single quotes inside a single-quoted string.
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+#[cfg(windows)]
+fn cmd_escape(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len() + 2);
+    escaped.push('"');
+    for ch in s.chars() {
+        match ch {
+            '^' => escaped.push_str("^^"),
+            '"' => escaped.push_str("^\""),
+            '&' => escaped.push_str("^&"),
+            '|' => escaped.push_str("^|"),
+            '<' => escaped.push_str("^<"),
+            '>' => escaped.push_str("^>"),
+            '(' => escaped.push_str("^("),
+            ')' => escaped.push_str("^)"),
+            '%' => escaped.push_str("^%"),
+            '!' => escaped.push_str("^!"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
 }
 
 /// Execute a single hook command
@@ -100,10 +143,211 @@ fn execute_hook(command: &str, env: &HookEnv, working_dir: &Path) -> Result<()> 
     Ok(())
 }
 
-/// Execute a single hook command (Windows - not supported)
 #[cfg(windows)]
-fn execute_hook(_command: &str, _env: &HookEnv, _working_dir: &Path) -> Result<()> {
-    Err(Error::WindowsHooksNotSupported)
+fn execute_hook(command: &str, env: &HookEnv, working_dir: &Path) -> Result<()> {
+    let shell = select_windows_shell_with_override(env.hook_shell.as_deref())?;
+
+    let expanded_command = env.expand_template_with(command, |value| match shell.kind {
+        WindowsShellKind::Pwsh | WindowsShellKind::PowerShell => powershell_escape(value),
+        WindowsShellKind::Cmd => cmd_escape(value),
+        WindowsShellKind::Bash | WindowsShellKind::Wsl => posix_shell_escape(value),
+    });
+
+    let mut cmd = Command::new(&shell.program);
+    cmd.args(&shell.args_for_command(&expanded_command))
+        .current_dir(working_dir)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    let status = cmd.status().map_err(|e| Error::HookExecutionFailed {
+        command: command.to_string(),
+        cause: e.to_string(),
+    })?;
+
+    if !status.success() {
+        return Err(Error::HookFailed {
+            command: command.to_string(),
+            exit_code: status.code(),
+            stderr: String::new(), // stderr is already displayed
+        });
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WindowsShellKind {
+    Pwsh,
+    PowerShell,
+    Cmd,
+    Bash,
+    Wsl,
+}
+
+#[cfg(windows)]
+struct WindowsShell {
+    kind: WindowsShellKind,
+    program: String,
+}
+
+#[cfg(windows)]
+impl WindowsShell {
+    fn args_for_command(&self, command: &str) -> Vec<String> {
+        match self.kind {
+            WindowsShellKind::Pwsh | WindowsShellKind::PowerShell => vec![
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                command.to_string(),
+            ],
+            WindowsShellKind::Cmd => {
+                vec!["/V:OFF".to_string(), "/C".to_string(), command.to_string()]
+            }
+            WindowsShellKind::Bash => vec!["-lc".to_string(), command.to_string()],
+            WindowsShellKind::Wsl => vec![
+                "--".to_string(),
+                "sh".to_string(),
+                "-lc".to_string(),
+                command.to_string(),
+            ],
+        }
+    }
+}
+
+#[cfg(windows)]
+fn select_windows_shell_with_override(override_value: Option<&str>) -> Result<WindowsShell> {
+    let env_override = std::env::var("GWTHOOK_SHELL").ok();
+    let override_value = override_value.or(env_override.as_deref());
+    let path_var = std::env::var_os("PATH");
+    let path_ext = std::env::var_os("PATHEXT");
+
+    select_windows_shell_with(
+        override_value,
+        path_var.as_deref(),
+        path_ext.as_deref(),
+        &|path| path.is_file(),
+    )
+}
+
+#[cfg(windows)]
+fn select_windows_shell_with(
+    override_value: Option<&str>,
+    path_var: Option<&std::ffi::OsStr>,
+    path_ext: Option<&std::ffi::OsStr>,
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> Result<WindowsShell> {
+    if let Some(value) = override_value {
+        return parse_windows_shell_override_with(value, path_var, path_ext, is_file);
+    }
+
+    let candidates = [
+        (WindowsShellKind::Pwsh, &["pwsh"] as &[&str]),
+        (WindowsShellKind::PowerShell, &["powershell"] as &[&str]),
+        (WindowsShellKind::Bash, &["bash", "bash.exe"] as &[&str]),
+        (WindowsShellKind::Cmd, &["cmd", "cmd.exe"] as &[&str]),
+    ];
+
+    for (kind, names) in candidates {
+        if let Some(program) = find_command_with(names, path_var, path_ext, is_file) {
+            return Ok(WindowsShell { kind, program });
+        }
+    }
+
+    Err(Error::HookExecutionFailed {
+        command: String::from(""),
+        cause: String::from("No supported shell found for hooks on Windows"),
+    })
+}
+
+#[cfg(windows)]
+fn parse_windows_shell_override(value: &str) -> Result<WindowsShell> {
+    let path_var = std::env::var_os("PATH");
+    let path_ext = std::env::var_os("PATHEXT");
+
+    parse_windows_shell_override_with(value, path_var.as_deref(), path_ext.as_deref(), &|path| {
+        path.is_file()
+    })
+}
+
+#[cfg(windows)]
+fn parse_windows_shell_override_with(
+    value: &str,
+    path_var: Option<&std::ffi::OsStr>,
+    path_ext: Option<&std::ffi::OsStr>,
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> Result<WindowsShell> {
+    let normalized = value.trim().to_ascii_lowercase();
+    let (kind, names): (WindowsShellKind, &[&str]) = match normalized.as_str() {
+        "pwsh" => (WindowsShellKind::Pwsh, &["pwsh"]),
+        "powershell" => (WindowsShellKind::PowerShell, &["powershell"]),
+        "bash" | "git-bash" | "gitbash" => (WindowsShellKind::Bash, &["bash", "bash.exe"]),
+        "wsl" => (WindowsShellKind::Wsl, &["wsl", "wsl.exe"]),
+        "cmd" | "cmd.exe" => (WindowsShellKind::Cmd, &["cmd", "cmd.exe"]),
+        _ => {
+            return Err(Error::HookExecutionFailed {
+                command: String::from(""),
+                cause: format!("Unsupported GWTHOOK_SHELL value: {value}"),
+            });
+        }
+    };
+
+    if let Some(program) = find_command_with(names, path_var, path_ext, is_file) {
+        return Ok(WindowsShell { kind, program });
+    }
+
+    Err(Error::HookExecutionFailed {
+        command: String::from(""),
+        cause: format!("Requested shell not found for hooks: {value}"),
+    })
+}
+
+#[cfg(windows)]
+fn find_command_with(
+    names: &[&str],
+    path_var: Option<&std::ffi::OsStr>,
+    path_ext: Option<&std::ffi::OsStr>,
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> Option<String> {
+    let path_var = path_var?;
+    let mut exts = vec!["".to_string()];
+    if let Some(exts_var) = path_ext {
+        for ext in exts_var.to_string_lossy().split(';') {
+            if !ext.is_empty() {
+                exts.push(ext.to_ascii_lowercase());
+            }
+        }
+    }
+
+    for dir in std::env::split_paths(&path_var) {
+        for name in names {
+            if let Some(found) = find_in_dir_with(&dir, name, &exts, is_file) {
+                return Some(found);
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(windows)]
+fn find_in_dir_with(
+    dir: &std::path::Path,
+    name: &str,
+    exts: &[String],
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> Option<String> {
+    let name_lower = name.to_ascii_lowercase();
+    for ext in exts {
+        let candidate = if ext.is_empty() || name_lower.ends_with(ext) {
+            dir.join(name)
+        } else {
+            dir.join(format!("{name}{ext}"))
+        };
+        if is_file(&candidate) {
+            return candidate.to_str().map(|s| s.to_string());
+        }
+    }
+    None
 }
 
 /// Execute pre_add hooks
@@ -260,18 +504,21 @@ pub(crate) fn display_hooks_for_review(hooks: &Hooks) {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn test_shell_escape_basic() {
         assert_eq!(shell_escape("hello"), "'hello'");
         assert_eq!(shell_escape("hello world"), "'hello world'");
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_shell_escape_single_quote() {
         assert_eq!(shell_escape("it's"), "'it'\\''s'");
         assert_eq!(shell_escape("a'b'c"), "'a'\\''b'\\''c'");
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_shell_escape_special_chars() {
         // Test shell metacharacters are properly quoted
@@ -282,9 +529,149 @@ mod tests {
         assert_eq!(shell_escape("test > file"), "'test > file'");
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_shell_escape_empty() {
         assert_eq!(shell_escape(""), "''");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_powershell_escape_basic() {
+        assert_eq!(powershell_escape("hello"), "'hello'");
+        assert_eq!(powershell_escape("hello world"), "'hello world'");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_powershell_escape_single_quote() {
+        assert_eq!(powershell_escape("it's"), "'it''s'");
+        assert_eq!(powershell_escape("a'b'c"), "'a''b''c'");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_powershell_escape_special_chars() {
+        assert_eq!(powershell_escape("$env:USERPROFILE"), "'$env:USERPROFILE'");
+        assert_eq!(powershell_escape("$(Get-Date)"), "'$(Get-Date)'");
+        assert_eq!(powershell_escape("test & pause"), "'test & pause'");
+        assert_eq!(powershell_escape("foo | bar"), "'foo | bar'");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_powershell_escape_empty() {
+        assert_eq!(powershell_escape(""), "''");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_cmd_escape_basic() {
+        assert_eq!(cmd_escape("hello"), "\"hello\"");
+        assert_eq!(cmd_escape("hello world"), "\"hello world\"");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_cmd_escape_special_chars() {
+        assert_eq!(cmd_escape("a&b"), "\"a^&b\"");
+        assert_eq!(cmd_escape("a|b"), "\"a^|b\"");
+        assert_eq!(cmd_escape("a>b"), "\"a^>b\"");
+        assert_eq!(cmd_escape("a<b"), "\"a^<b\"");
+        assert_eq!(cmd_escape("a^b"), "\"a^^b\"");
+        assert_eq!(cmd_escape("a%b"), "\"a^%b\"");
+    }
+
+    #[cfg(windows)]
+    fn select_shell_for_test(
+        override_value: Option<&str>,
+        path_list: &[&str],
+        path_exts: &[&str],
+        existing: &[&str],
+    ) -> Result<WindowsShell> {
+        use std::collections::HashSet;
+
+        let path_var = if path_list.is_empty() {
+            None
+        } else {
+            Some(std::ffi::OsString::from(path_list.join(";")))
+        };
+        let path_ext = if path_exts.is_empty() {
+            None
+        } else {
+            Some(std::ffi::OsString::from(path_exts.join(";")))
+        };
+
+        let existing: HashSet<std::path::PathBuf> =
+            existing.iter().map(std::path::PathBuf::from).collect();
+
+        select_windows_shell_with(
+            override_value,
+            path_var.as_deref(),
+            path_ext.as_deref(),
+            &|path| existing.contains(path),
+        )
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_select_windows_shell_prefers_pwsh() {
+        let shell = select_shell_for_test(
+            None,
+            &["C:\\bin"],
+            &[".EXE"],
+            &[
+                "C:\\bin\\pwsh.exe",
+                "C:\\bin\\powershell.exe",
+                "C:\\bin\\cmd.exe",
+            ],
+        )
+        .unwrap();
+        assert_eq!(shell.kind, WindowsShellKind::Pwsh);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_select_windows_shell_fallback_to_cmd() {
+        let shell =
+            select_shell_for_test(None, &["C:\\bin"], &[".EXE"], &["C:\\bin\\cmd.exe"]).unwrap();
+        assert_eq!(shell.kind, WindowsShellKind::Cmd);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_select_windows_shell_ignores_wsl_by_default() {
+        let result = select_shell_for_test(None, &["C:\\bin"], &[".EXE"], &["C:\\bin\\wsl.exe"]);
+        assert!(result.is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_windows_shell_override() {
+        let shell = select_shell_for_test(
+            Some("cmd"),
+            &["C:\\bin"],
+            &[".EXE"],
+            &["C:\\bin\\pwsh.exe", "C:\\bin\\cmd.exe"],
+        )
+        .unwrap();
+        assert_eq!(shell.kind, WindowsShellKind::Cmd);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_windows_shell_override_wsl() {
+        let shell =
+            select_shell_for_test(Some("wsl"), &["C:\\bin"], &[".EXE"], &["C:\\bin\\wsl.exe"])
+                .unwrap();
+        assert_eq!(shell.kind, WindowsShellKind::Wsl);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_windows_shell_override_invalid_value() {
+        let result = parse_windows_shell_override("invalid-shell");
+        assert!(result.is_err());
     }
 
     #[test]
@@ -294,6 +681,7 @@ mod tests {
             worktree_name: "my-feature".to_string(),
             branch: Some("feature/test".to_string()),
             repo_root: "/path/to/repo".to_string(),
+            hook_shell: None,
         };
 
         let result = env.expand_template("echo {{worktree_name}}");
@@ -308,6 +696,7 @@ mod tests {
             worktree_name: "feat'ure".to_string(),
             branch: Some("fix/$bug".to_string()),
             repo_root: "/repo".to_string(),
+            hook_shell: None,
         };
 
         let result = env.expand_template("cd {{worktree_path}}");
@@ -328,6 +717,7 @@ mod tests {
             worktree_name: "detached".to_string(),
             branch: None,
             repo_root: "/repo".to_string(),
+            hook_shell: None,
         };
 
         let result = env.expand_template("echo {{branch}}");
@@ -341,6 +731,7 @@ mod tests {
             worktree_name: "test".to_string(),
             branch: Some("main".to_string()),
             repo_root: "/repo".to_string(),
+            hook_shell: None,
         };
 
         let result = env.expand_template("cd {{worktree_path}} && git checkout {{branch}} && pwd");

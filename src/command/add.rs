@@ -120,11 +120,23 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         .or(args.new_branch_force.clone())
         .map(|b| b.strip_prefix("refs/heads/").unwrap_or(&b).to_string());
 
+    let hook_shell = {
+        #[cfg(windows)]
+        {
+            args.hook_shell.clone()
+        }
+        #[cfg(not(windows))]
+        {
+            None
+        }
+    };
+
     let hook_env = HookEnv {
         worktree_path: worktree_path.to_string_lossy().to_string(),
         worktree_name,
         branch,
         repo_root: repo_root.to_string_lossy().to_string(),
+        hook_shell,
     };
 
     // Run pre_add hooks

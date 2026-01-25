@@ -78,11 +78,23 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
             .unwrap_or("")
             .to_string();
 
+        let hook_shell = {
+            #[cfg(windows)]
+            {
+                args.hook_shell.clone()
+            }
+            #[cfg(not(windows))]
+            {
+                None
+            }
+        };
+
         let hook_env = HookEnv {
             worktree_path: path.to_string_lossy().to_string(),
             worktree_name,
             branch: None, // Branch info not available for remove
             repo_root: repo_root.to_string_lossy().to_string(),
+            hook_shell,
         };
 
         // Run pre_remove hooks

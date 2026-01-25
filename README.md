@@ -301,9 +301,15 @@ hooks:
 - `{{repo_root}}` - Repository root
 
 **Security:**
-- Variables are shell-escaped automatically
+- Variables are shell-escaped automatically (POSIX sh on Unix, PowerShell on Windows)
 - Must trust hooks via `gwtx trust` before execution
 - Changes require re-trusting
+
+**Windows shells:**
+- Default shell auto-detect order: `pwsh` → `powershell` → `bash` (Git Bash) → `cmd`
+- Override with `--hook-shell` or `GWTHOOK_SHELL` (`pwsh`, `powershell`, `bash`, `cmd`, `wsl`)
+- `--hook-shell` takes precedence over `GWTHOOK_SHELL`
+- `wsl` is only used when explicitly set, because Windows paths may not map to WSL
 
 **Examples:** [examples/hooks-basic.yaml](examples/hooks-basic.yaml), [examples/nodejs-project.yaml](examples/nodejs-project.yaml)
 
@@ -337,6 +343,7 @@ Set globally in `defaults`, per-operation, or via `--on-conflict` flag.
 | `--dry-run` | Preview actions without executing |
 | `--quiet`, `-q` | Suppress output |
 | `--no-setup` | Skip setup (run git worktree add only) |
+| `--hook-shell <SHELL>` | Windows only: choose hook shell (`pwsh`, `powershell`, `bash`, `cmd`, `wsl`) |
 
 ## Command Options
 
@@ -352,6 +359,7 @@ gwtx Options:
       --on-conflict <MODE>  abort, skip, overwrite, backup
       --dry-run             Preview without executing
       --no-setup            Skip .gwtx.yaml setup
+      --hook-shell <SHELL>  Windows only: hook shell
 
 git worktree Options:
   -b <name>                 Create new branch
@@ -379,6 +387,7 @@ gwtx rm [OPTIONS] [PATHS]...
 gwtx Options:
   -i, --interactive         Select worktrees interactively
       --dry-run             Preview without executing
+      --hook-shell <SHELL>  Windows only: hook shell
 
 git worktree Options:
   -f, --force               Force removal (skip all checks and prompts)
@@ -431,11 +440,10 @@ gwtx man | man -l -
 
 ### Hooks
 
-**Hooks are currently supported on Unix-like systems (Linux, macOS) only.**
+Hooks are supported on Unix-like systems (Linux, macOS) and Windows.
 
-Windows support is not yet available. For Windows users:
-- Use Git Bash or WSL for hooks functionality
-- Or use `--no-setup` flag to skip hooks
+On Windows, hooks run via an auto-detected shell (`pwsh`, `powershell`, Git Bash,
+or `cmd`). Use `GWTHOOK_SHELL` to force a specific shell if needed.
 
 ### Windows
 
