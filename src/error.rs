@@ -124,16 +124,6 @@ pub(crate) enum Error {
     #[error("No hooks defined in .gwtx.yaml")]
     NoHooksDefined,
 
-    #[cfg(windows)]
-    #[error(
-        "Hooks are not supported on Windows yet.\n\
-        \n\
-        For Windows users:\n\
-        - Use Git Bash or WSL for hooks functionality\n\
-        - Or use --no-setup to skip hooks"
-    )]
-    WindowsHooksNotSupported,
-
     #[error("Internal error: {0}")]
     Internal(String),
 

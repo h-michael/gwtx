@@ -177,8 +177,9 @@ HOOKS:
     Hooks run custom commands before/after worktree operations.
     Require explicit trust via 'gwtx trust' before execution.
 
-    Platform support: Unix-like systems (Linux, macOS) only.
-    Windows users: Use Git Bash/WSL or --no-setup flag.
+    Platform support: Unix-like systems (Linux, macOS) and Windows.
+    On Windows, hooks run via an auto-detected shell (pwsh, powershell,
+    Git Bash, or cmd). Override with --hook-shell or GWTHOOK_SHELL.
 
     Format:
         hooks:
@@ -239,7 +240,8 @@ CONFLICT MODES:
     backup     Rename existing file with .bak suffix before creating new one
 
 ENVIRONMENT VARIABLES:
-    GWTX_ON_CONFLICT    Default conflict resolution mode (e.g., GWTX_ON_CONFLICT=backup)")]
+    GWTX_ON_CONFLICT    Default conflict resolution mode (e.g., GWTX_ON_CONFLICT=backup)
+    GWTHOOK_SHELL       Windows-only hook shell override (pwsh, powershell, bash, cmd, wsl)")]
 pub(crate) struct AddArgs {
     /// Path for the new worktree (required unless --interactive)
     pub path: Option<PathBuf>,
@@ -268,6 +270,25 @@ pub(crate) struct AddArgs {
     /// Skip .gwtx.yaml setup, run git worktree add only
     #[arg(long, help_heading = "gwtx Options")]
     pub no_setup: bool,
+
+    /// Windows-only: select hook shell (pwsh, powershell, bash, cmd, wsl)
+    #[cfg(windows)]
+    #[arg(
+        long,
+        value_name = "SHELL",
+        help_heading = "gwtx Options",
+        value_parser = [
+            "pwsh",
+            "powershell",
+            "bash",
+            "git-bash",
+            "gitbash",
+            "cmd",
+            "cmd.exe",
+            "wsl"
+        ]
+    )]
+    pub hook_shell: Option<String>,
 
     // --- git worktree Options ---
     /// Create a new branch <name> starting at <commitish>
@@ -373,6 +394,25 @@ pub(crate) struct RemoveArgs {
     #[arg(long, help_heading = "gwtx Options")]
     pub dry_run: bool,
 
+    /// Windows-only: select hook shell (pwsh, powershell, bash, cmd, wsl)
+    #[cfg(windows)]
+    #[arg(
+        long,
+        value_name = "SHELL",
+        help_heading = "gwtx Options",
+        value_parser = [
+            "pwsh",
+            "powershell",
+            "bash",
+            "git-bash",
+            "gitbash",
+            "cmd",
+            "cmd.exe",
+            "wsl"
+        ]
+    )]
+    pub hook_shell: Option<String>,
+
     // --- git worktree Options ---
     /// Force removal even if worktree is dirty or locked
     #[arg(short, long, help_heading = "git worktree Options")]
@@ -452,8 +492,9 @@ SECURITY:
     If hooks are modified in .gwtx.yaml, you must re-trust them.
 
 HOOKS:
-    Platform support: Unix-like systems (Linux, macOS) only.
-    Windows users: Use Git Bash/WSL or --no-setup flag.
+    Platform support: Unix-like systems (Linux, macOS) and Windows.
+    On Windows, hooks run via an auto-detected shell (pwsh, powershell,
+    Git Bash, or cmd). Override with --hook-shell or GWTHOOK_SHELL.
 
     pre_add      Run before worktree creation (in repo_root)
     post_add     Run after worktree creation (in worktree_path)

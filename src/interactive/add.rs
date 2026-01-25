@@ -1154,7 +1154,7 @@ fn draw_branch_preview(
     frame.render_widget(preview, area);
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "impure-test"))]
 fn draw_text_step(
     frame: &mut ratatui::Frame<'_>,
     input: &AddInteractiveInput,
@@ -1597,7 +1597,7 @@ fn set_search_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, query: &str) {
     frame.set_cursor_position((x, y));
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "impure-test"))]
 mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
