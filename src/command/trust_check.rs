@@ -18,14 +18,17 @@ pub(crate) fn load_config_with_trust_check(
     enforce_hooks: bool,
     hint: TrustHint,
 ) -> Result<Config> {
-    let initial_config = config::load(repo_root)?.unwrap_or_default();
+    let global_config = config::load_global()?;
+    let initial_repo_config = config::load(repo_root)?.unwrap_or_default();
+    let initial_config =
+        config::merge_with_global(initial_repo_config.clone(), global_config.as_ref());
     color::set_cli_theme(&initial_config.ui.colors);
 
     if enforce_hooks
-        && initial_config.hooks.has_hooks()
-        && !trust::is_trusted(main_worktree_path, &initial_config)?
+        && initial_repo_config.hooks.has_hooks()
+        && !trust::is_trusted(main_worktree_path, &initial_repo_config)?
     {
-        hook::display_hooks_for_review(&initial_config.hooks);
+        hook::display_hooks_for_review(&initial_repo_config.hooks);
 
         eprintln!();
         eprintln!("{}", ColorScheme::error("Configuration is not trusted."));
@@ -45,9 +48,12 @@ pub(crate) fn load_config_with_trust_check(
     }
 
     // TOCTOU protection: reload config immediately before use
-    let config = config::load(repo_root)?.unwrap_or_default();
+    let repo_config = config::load(repo_root)?.unwrap_or_default();
+    let config = config::merge_with_global(repo_config.clone(), global_config.as_ref());
     color::set_cli_theme(&config.ui.colors);
-    if enforce_hooks && config.hooks.has_hooks() && !trust::is_trusted(main_worktree_path, &config)?
+    if enforce_hooks
+        && repo_config.hooks.has_hooks()
+        && !trust::is_trusted(main_worktree_path, &repo_config)?
     {
         eprintln!(
             "{}",

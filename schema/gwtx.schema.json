@@ -115,6 +115,12 @@
       "description": "Hooks that run before/after worktree operations",
       "type": "object",
       "properties": {
+        "hook_shell": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "post_add": {
           "type": "array",
           "default": [],

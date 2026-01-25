@@ -7,7 +7,7 @@ use clap_complete::Shell;
 #[derive(Parser, Debug)]
 #[command(name = "gwtx")]
 #[command(about = "git worktree extra - enhance git worktree with automated setup")]
-#[command(version)]
+#[command(version = VERSION_STRING)]
 #[command(after_help = "\
 CONFIGURATION:
     gwtx reads .gwtx.yaml from the repository root for setup instructions.
@@ -68,6 +68,8 @@ pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Command,
 }
+
+const VERSION_STRING: &str = env!("GWTX_VERSION_LABEL");
 
 /// Available subcommands.
 #[derive(Subcommand, Debug)]
@@ -212,6 +214,12 @@ pub(crate) enum ConfigCommand {
     Validate,
     /// Generate JSON Schema for configuration
     Schema,
+    /// Create a new configuration file
+    New {
+        /// Create global config (XDG_CONFIG_HOME/gwtx/config.yaml)
+        #[arg(short, long)]
+        global: bool,
+    },
 }
 
 /// Arguments for the `add` subcommand.

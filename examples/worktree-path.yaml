@@ -1,4 +1,4 @@
-## yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
 
 # Worktree path configuration examples
 # Configure how worktree paths are suggested in interactive mode

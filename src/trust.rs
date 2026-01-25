@@ -673,6 +673,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let mut config = create_test_config();
         config.hooks = Hooks {
+            hook_shell: None,
             pre_add: vec![HookEntry {
                 command: "echo 'pre'".to_string(),
                 description: None,

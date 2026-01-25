@@ -24,7 +24,7 @@ pub(crate) fn run(args: ListArgs, color: ColorConfig) -> Result<()> {
     }
 
     let repo_root = git::repository_root()?;
-    if let Ok(Some(config)) = config::load(&repo_root) {
+    if let Ok(config) = config::load_merged(&repo_root) {
         color::set_cli_theme(&config.ui.colors);
     }
 

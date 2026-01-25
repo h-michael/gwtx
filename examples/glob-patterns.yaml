@@ -1,4 +1,4 @@
-## yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
 
 # Glob pattern examples for link operations
 # Link multiple files at once using glob patterns

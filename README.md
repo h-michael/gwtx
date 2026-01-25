@@ -133,6 +133,12 @@ cd "$(gwtx path)"
 # Show config format help
 gwtx config
 
+# Create a new repo config
+gwtx config new
+
+# Create a new global config
+gwtx config new --global
+
 # Validate configuration
 gwtx config validate
 ```

@@ -123,7 +123,9 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     let hook_shell = {
         #[cfg(windows)]
         {
-            args.hook_shell.clone()
+            args.hook_shell
+                .clone()
+                .or_else(|| config.hooks.hook_shell.clone())
         }
         #[cfg(not(windows))]
         {
