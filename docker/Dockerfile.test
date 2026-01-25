@@ -1,0 +1,26 @@
+# Dockerfile for gwtx integration tests
+# Supports rootless Docker with UID/GID mapping
+
+FROM rust:1.86-bookworm
+
+# Install git (required for worktree operations)
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure git globally
+RUN git config --system user.email "test@example.com" \
+    && git config --system user.name "Test User" \
+    && git config --system init.defaultBranch main
+
+WORKDIR /workspace
+
+# Copy entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set environment variables for isolated trust directory
+ENV GWTX_TRUST_DIR=/tmp/gwtx-trusted
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["cargo", "test", "--features", "impure-test"]
