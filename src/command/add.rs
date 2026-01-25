@@ -1,10 +1,11 @@
 use crate::cli::AddArgs;
-use crate::color::ColorConfig;
+use crate::color::{self, ColorConfig};
 use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::config::{self, Config, Link, OnConflict};
 use crate::error::{Error, Result};
 use crate::git;
 use crate::hook::{self, HookEnv};
+use crate::interactive;
 use crate::operation::{self, ConflictAction, check_conflict, create_directory, resolve_conflict};
 use crate::output::Output;
 use crate::prompt::{self, ConflictChoice};
@@ -35,6 +36,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
             command: "gwtx add --no-setup <path>",
         },
     )?;
+    color::set_cli_theme(&config.ui.colors);
 
     // Handle interactive mode
     let worktree_path = if args.interactive {
@@ -217,8 +219,9 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
                 output.results_failed_detail(description.as_deref(), &command, exit_code);
             }
         } else {
-            // All succeeded - simple message
+            // All succeeded - show message with path
             output.results_success("Worktree created successfully");
+            output.list(&worktree_path.display().to_string());
         }
     }
 
@@ -227,31 +230,65 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
 /// Run interactive mode to select branch and path.
 fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
-    // Get list of local and remote branches
+    let current_dir = std::env::current_dir()?;
     let local_branches = git::list_branches()?;
     let remote_branches = git::list_remote_branches()?;
 
-    // Create suggestion generator closure if branch_template is configured
-    let generate_suggestion = config.worktree.branch_template.as_ref().map(|_| {
+    let suggest_branch_name = config.worktree.branch_template.as_ref().map(|_| {
         let repository = git::repository_name().unwrap_or_default();
         let worktree = config.worktree.clone();
-        move |commitish: &str| {
+        std::sync::Arc::new(move |commitish: &str| {
             let env = config::BranchTemplateEnv {
                 commitish: commitish.to_string(),
                 repository: repository.clone(),
             };
             worktree.generate_branch_name(&env).unwrap_or_default()
-        }
+        }) as std::sync::Arc<dyn Fn(&str) -> String + Send + Sync>
     });
 
-    // Prompt for branch selection
-    let branch_choice =
-        prompt::prompt_branch_selection(&local_branches, &remote_branches, generate_suggestion)?;
+    let suggest_path = {
+        let repository = git::repository_name().unwrap_or_default();
+        let worktree = config.worktree.clone();
+        std::sync::Arc::new(move |branch: &str| worktree.generate_path(branch, &repository))
+            as std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>
+    };
 
-    // Set branch in args
+    let worktrees = git::list_worktrees()?;
+    let mut used_branches = std::collections::HashMap::new();
+    let mut existing_worktrees = Vec::new();
+    for worktree in worktrees {
+        if let Some(branch) = worktree.branch.as_ref() {
+            if let Some(name) = branch.strip_prefix("refs/heads/") {
+                used_branches.insert(name.to_string(), worktree.path.clone());
+            }
+        }
+        let branch = worktree
+            .branch
+            .as_ref()
+            .map(|name| name.strip_prefix("refs/heads/").unwrap_or(name).to_string());
+        existing_worktrees.push(interactive::WorktreeSummary {
+            path: worktree.path,
+            branch,
+        });
+    }
+
+    let result = interactive::run_add_interactive(interactive::AddInteractiveInput {
+        local_branches,
+        remote_branches,
+        used_branches,
+        current_dir: current_dir.clone(),
+        existing_worktrees,
+        log_limit: 10,
+        fetch_log: std::sync::Arc::new(git::log_oneline),
+        initial_path: args.path.clone(),
+        suggest_path: Some(suggest_path),
+        suggest_branch_name,
+        theme: interactive::UiTheme::from_colors(&config.ui.colors),
+    })?;
+
+    let branch_choice = result.branch_choice;
     if branch_choice.create_new {
         args.new_branch = Some(branch_choice.branch.clone());
-        // Set base commitish if specified
         if let Some(base) = &branch_choice.base_commitish {
             args.commitish = Some(base.clone());
         }
@@ -259,28 +296,12 @@ fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
         args.commitish = Some(branch_choice.branch.clone());
     }
 
-    // Generate suggested path from config or use default
-    let suggested_path = if let Some(path) = config
-        .worktree
-        .generate_path(&branch_choice.branch, &git::repository_name()?)
-    {
-        path
+    args.path = Some(result.path.clone());
+
+    let worktree_path = if result.path.is_absolute() {
+        result.path
     } else {
-        // Default fallback - keep branch name as-is (no sanitization)
-        format!("../{}", branch_choice.branch)
-    };
-
-    // Prompt for worktree path
-    let path = prompt::prompt_worktree_path(&suggested_path)?;
-
-    // Update args.path for display purposes
-    args.path = Some(path.clone());
-
-    // Convert to absolute path
-    let worktree_path = if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir()?.join(&path)
+        current_dir.join(&result.path)
     };
 
     Ok(worktree_path)
@@ -458,7 +479,7 @@ fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
 
     // Get git-tracked files if needed
     let tracked_files: HashSet<PathBuf> = if link.ignore_tracked {
-        git::list_tracked_files()?.into_iter().collect()
+        git::list_tracked_files(repo_root)?.into_iter().collect()
     } else {
         HashSet::new()
     };
@@ -543,6 +564,11 @@ mod tests {
     fn test_contains_glob_pattern_none() {
         assert!(!contains_glob_pattern(Path::new("secrets/config.json")));
     }
+}
+
+#[cfg(all(test, feature = "impure-test"))]
+mod impure_tests {
+    use super::*;
 
     #[test]
     fn test_expand_link_no_glob() {

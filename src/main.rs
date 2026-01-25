@@ -6,11 +6,13 @@ mod error;
 mod git;
 mod hook;
 mod init;
+mod interactive;
 mod operation;
 mod output;
 mod prompt;
 mod trust;
 
+use crate::color::ColorScheme;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -58,9 +60,18 @@ fn main() -> ExitCode {
             let color_config = color::ColorConfig::new(color_choice);
             command::list(list_args, color_config)
         }
-        cli::Command::Path => command::path(),
-        cli::Command::Switch => command::switch(),
-        cli::Command::Config(config_args) => command::config(config_args.command),
+        cli::Command::Path => {
+            color::ColorConfig::new(clap::ColorChoice::Auto);
+            command::path()
+        }
+        cli::Command::Switch => {
+            color::ColorConfig::new(clap::ColorChoice::Auto);
+            command::switch()
+        }
+        cli::Command::Config(config_args) => {
+            color::ColorConfig::new(clap::ColorChoice::Auto);
+            command::config(config_args.command)
+        }
         cli::Command::Trust(trust_args) => {
             let color_choice = if trust_args.no_color {
                 clap::ColorChoice::Never
@@ -70,10 +81,22 @@ fn main() -> ExitCode {
             let color_config = color::ColorConfig::new(color_choice);
             command::trust(trust_args, color_config)
         }
-        cli::Command::Untrust(untrust_args) => command::untrust(untrust_args),
-        cli::Command::Completions { shell } => command::completions(shell),
-        cli::Command::Init(init_args) => command::init(init_args),
-        cli::Command::Man => command::man(),
+        cli::Command::Untrust(untrust_args) => {
+            color::ColorConfig::new(clap::ColorChoice::Auto);
+            command::untrust(untrust_args)
+        }
+        cli::Command::Completions { shell } => {
+            color::ColorConfig::new(clap::ColorChoice::Auto);
+            command::completions(shell)
+        }
+        cli::Command::Init(init_args) => {
+            color::ColorConfig::new(clap::ColorChoice::Auto);
+            command::init(init_args)
+        }
+        cli::Command::Man => {
+            color::ColorConfig::new(clap::ColorChoice::Auto);
+            command::man()
+        }
     };
 
     // Check if a signal was received
@@ -95,12 +118,15 @@ fn main() -> ExitCode {
         }
         Err(error::Error::TrustCheckFailed) => ExitCode::from(1),
         Err(error::Error::SwitchRequiresShellIntegration) => {
-            eprintln!("Error: {}", error::Error::SwitchRequiresShellIntegration);
+            eprintln!(
+                "{}",
+                ColorScheme::error(&error::Error::SwitchRequiresShellIntegration.to_string())
+            );
             eprintln!("\nFor setup instructions, run: gwtx init --help");
             ExitCode::FAILURE
         }
         Err(e) => {
-            eprintln!("Error: {e}");
+            eprintln!("{}", ColorScheme::error(&e.to_string()));
             ExitCode::FAILURE
         }
     }

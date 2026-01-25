@@ -1,3 +1,5 @@
+use crate::color;
+use crate::color::ColorScheme;
 use crate::config::{self, Config};
 use crate::error::{Error, Result};
 use crate::hook;
@@ -17,6 +19,7 @@ pub(crate) fn load_config_with_trust_check(
     hint: TrustHint,
 ) -> Result<Config> {
     let initial_config = config::load(repo_root)?.unwrap_or_default();
+    color::set_cli_theme(&initial_config.ui.colors);
 
     if enforce_hooks
         && initial_config.hooks.has_hooks()
@@ -25,7 +28,7 @@ pub(crate) fn load_config_with_trust_check(
         hook::display_hooks_for_review(&initial_config.hooks);
 
         eprintln!();
-        eprintln!("Error: Configuration is not trusted.");
+        eprintln!("{}", ColorScheme::error("Configuration is not trusted."));
         eprintln!("The .gwtx.yaml file contains hooks that can execute arbitrary commands.");
         eprintln!("For security, you must explicitly review and trust the configuration.");
         eprintln!();
@@ -43,9 +46,13 @@ pub(crate) fn load_config_with_trust_check(
 
     // TOCTOU protection: reload config immediately before use
     let config = config::load(repo_root)?.unwrap_or_default();
+    color::set_cli_theme(&config.ui.colors);
     if enforce_hooks && config.hooks.has_hooks() && !trust::is_trusted(main_worktree_path, &config)?
     {
-        eprintln!("\nError: .gwtx.yaml was modified after trust check.");
+        eprintln!(
+            "{}",
+            ColorScheme::error(".gwtx.yaml was modified after trust check.")
+        );
         eprintln!("For security, configuration must be re-trusted after any changes.");
         eprintln!("Run: gwtx trust");
         return Err(Error::HooksNotTrusted);

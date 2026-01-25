@@ -10,7 +10,7 @@ pub(crate) fn create_directory(target: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "impure-test"))]
 mod tests {
     use super::*;
 

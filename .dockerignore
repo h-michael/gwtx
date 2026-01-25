@@ -1,0 +1,21 @@
+# Build artifacts
+target/
+
+# Git
+.git/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed for testing)
+*.md
+!README.md
+examples/

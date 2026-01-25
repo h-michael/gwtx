@@ -123,6 +123,22 @@ fn worktree_remove_inner(path: &std::path::Path, force: bool) -> Result<std::pro
     Ok(cmd.output()?)
 }
 
+/// Get recent commits for a branch or commitish.
+pub(crate) fn log_oneline(commitish: &str, limit: usize) -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["log", "--oneline", &format!("-n{limit}"), commitish])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(Error::GitCommandFailed {
+            command: "git log".to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        });
+    }
+
+    Ok(parse_output_lines(&output.stdout))
+}
+
 /// Parse git command output into lines.
 fn parse_output_lines(bytes: &[u8]) -> Vec<String> {
     String::from_utf8_lossy(bytes)
@@ -179,6 +195,34 @@ pub(crate) fn list_remote_branches() -> Result<Vec<String>> {
         .collect())
 }
 
+/// Validate a branch name using git check-ref-format.
+/// Returns Ok(None) when valid, Ok(Some(message)) when invalid.
+pub(crate) fn validate_branch_name(name: &str) -> Result<Option<String>> {
+    let output = Command::new("git")
+        .args(["check-ref-format", "--branch", name])
+        .output()?;
+
+    if output.status.success() {
+        return Ok(None);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let message = if stderr.is_empty() {
+        "Invalid branch name".to_string()
+    } else {
+        stderr
+    };
+
+    if output.status.code() == Some(1) {
+        return Ok(Some(message));
+    }
+
+    Err(Error::GitCommandFailed {
+        command: format!("git check-ref-format --branch {name}"),
+        stderr: message,
+    })
+}
+
 /// Check if current directory is inside a git repository.
 pub(crate) fn is_inside_repo() -> bool {
     Command::new("git")
@@ -188,10 +232,13 @@ pub(crate) fn is_inside_repo() -> bool {
         .unwrap_or(false)
 }
 
-/// List all files tracked by git in the repository root.
+/// List all files tracked by git in the specified repository.
 /// Returns paths relative to the repository root.
-pub(crate) fn list_tracked_files() -> Result<Vec<PathBuf>> {
-    let output = Command::new("git").args(["ls-files"]).output()?;
+pub(crate) fn list_tracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
+    let output = Command::new("git")
+        .args(["ls-files"])
+        .current_dir(repo_root)
+        .output()?;
 
     if !output.status.success() {
         return Err(Error::NotInGitRepo);
@@ -559,8 +606,8 @@ fn parse_log_output(bytes: &[u8]) -> Result<UnpushedCommits> {
     })
 }
 
-#[cfg(test)]
-mod tests {
+#[cfg(all(test, feature = "impure-test"))]
+mod impure_tests {
     use super::*;
 
     #[test]
@@ -569,6 +616,11 @@ mod tests {
         // Just verify it doesn't panic
         let _ = is_inside_repo();
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 
     #[test]
     fn test_parse_worktree_list_single() {

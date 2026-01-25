@@ -47,7 +47,7 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "impure-test"))]
 mod tests {
     use super::*;
 

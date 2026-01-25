@@ -1,41 +1,17 @@
-use crate::color::{ColorConfig, ColorScheme};
+use crate::color::ColorConfig;
 use crate::config::OnConflict;
 use crate::error::{Error, Result};
+use crate::interactive;
+use crate::interactive::{STEP_CONFIRM, STEP_SELECT, SelectMode, WorktreeEntry};
+use crate::{config, git};
 
-use std::borrow::Cow;
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
-// inquire is used for all platforms (Text, Confirm, and Windows fallback)
-use inquire::{InquireError, Text};
-
-// Unix: Use skim for fuzzy finder
-#[cfg(unix)]
-use skim::prelude::*;
-#[cfg(unix)]
-use std::io::Cursor;
-#[cfg(unix)]
-use std::sync::Arc;
-
-// Windows: Use inquire Select/MultiSelect as fallback
-#[cfg(windows)]
-use inquire::{MultiSelect, Select};
-
 /// Check if stdin is connected to a terminal.
-/// Note: We only check stdin because skim/inquire can work with stdout redirected
-/// (e.g., in command substitution like `$(gwtx path)`), as they write to /dev/tty directly.
+/// Note: We only check stdin because interactive UI writes to /dev/tty or stdout directly.
 pub(crate) fn is_interactive() -> bool {
     io::stdin().is_terminal()
-}
-
-/// Convert inquire error to our error type.
-fn convert_inquire_error(e: InquireError) -> Error {
-    match e {
-        InquireError::OperationCanceled | InquireError::OperationInterrupted => Error::Aborted,
-        _ => Error::Selector {
-            message: e.to_string(),
-        },
-    }
 }
 
 /// Clear screen (equivalent to termion's clear::All + cursor::Goto(1, 1)).
@@ -73,109 +49,6 @@ pub(crate) fn clear_screen_interactive() -> Result<()> {
 #[cfg(windows)]
 pub(crate) fn clear_screen_interactive() -> Result<()> {
     Ok(())
-}
-
-// Unix: skim-based selector (fuzzy search enabled)
-#[cfg(unix)]
-fn skim_select(prompt: &str, items: Vec<String>) -> Result<String> {
-    let options = SkimOptionsBuilder::default()
-        .prompt(prompt.to_string())
-        .multi(false)
-        .reverse(true)
-        .build()
-        .map_err(|e| Error::Selector {
-            message: format!("Failed to build skim options: {}", e),
-        })?;
-
-    let input = items.join("\n");
-    let item_reader = SkimItemReader::default();
-    let items = item_reader.of_bufread(Cursor::new(input));
-
-    let output = Skim::run_with(&options, Some(items));
-
-    // Note: Do not clear screen here to preserve shell buffer/history
-    // skim handles terminal cleanup automatically on exit
-
-    match output {
-        Some(out) if out.is_abort => Err(Error::Aborted),
-        Some(out) if !out.selected_items.is_empty() => {
-            Ok(out.selected_items[0].output().to_string())
-        }
-        _ => Err(Error::Aborted),
-    }
-}
-
-// Unix: skim-based selector (fuzzy search disabled for fixed choices)
-#[cfg(unix)]
-fn skim_select_simple(prompt: &str, items: Vec<String>) -> Result<String> {
-    let options = SkimOptionsBuilder::default()
-        .prompt(prompt.to_string())
-        .multi(false)
-        .reverse(true)
-        .exact(true) // Disable fuzzy search
-        .no_sort(true) // Keep original order
-        .build()
-        .map_err(|e| Error::Selector {
-            message: format!("Failed to build skim options: {}", e),
-        })?;
-
-    let input = items.join("\n");
-    let item_reader = SkimItemReader::default();
-    let items = item_reader.of_bufread(Cursor::new(input));
-
-    let output = Skim::run_with(&options, Some(items));
-
-    // Note: Do not clear screen here to preserve shell buffer/history
-    // skim handles terminal cleanup automatically on exit
-
-    match output {
-        Some(out) if out.is_abort => Err(Error::Aborted),
-        Some(out) if !out.selected_items.is_empty() => {
-            Ok(out.selected_items[0].output().to_string())
-        }
-        _ => Err(Error::Aborted),
-    }
-}
-
-// Windows: inquire Select as fallback
-#[cfg(windows)]
-fn inquire_select(prompt: &str, items: Vec<String>) -> Result<String> {
-    Select::new(prompt, items)
-        .without_help_message()
-        .prompt()
-        .map_err(convert_inquire_error)
-}
-
-/// Run selector with given items (fuzzy search enabled by default).
-fn run_select(prompt: &str, items: Vec<String>) -> Result<String> {
-    #[cfg(unix)]
-    {
-        // Use simple mode (no fuzzy search) for small fixed lists
-        if items.len() <= 5 {
-            skim_select_simple(prompt, items)
-        } else {
-            skim_select(prompt, items)
-        }
-    }
-    #[cfg(windows)]
-    {
-        inquire_select(prompt, items)
-    }
-}
-
-/// Run selector with header message.
-fn run_select_with_message(prompt: &str, message: &str, items: Vec<String>) -> Result<String> {
-    println!("{message}");
-    run_select(prompt, items)
-}
-
-/// Simple text input with optional initial value.
-fn read_line(prompt: &str, initial_value: Option<&str>) -> Result<String> {
-    let mut text = Text::new(prompt);
-    if let Some(v) = initial_value {
-        text = text.with_initial_value(v);
-    }
-    text.prompt().map_err(convert_inquire_error)
 }
 
 /// User's conflict resolution choice.
@@ -270,124 +143,13 @@ pub(crate) fn prompt_conflict_with_all(target: &Path) -> Result<ConflictChoice> 
         .collect();
 
     let message = format!("Conflict: '{}' already exists.", target.display());
-    let selection = run_select_with_message("How should gwtx proceed?", &message, choices)?;
+    let theme = resolve_ui_theme()?;
+    let selection =
+        interactive::select_from_list("How should gwtx proceed?", Some(&message), &choices, theme)?;
 
     let option = ConflictOption::from_label(&selection).unwrap_or(ConflictOption::Abort);
 
     Ok(option.to_choice())
-}
-
-/// User's branch selection result.
-#[derive(Debug, Clone)]
-pub(crate) struct BranchChoice {
-    pub branch: String,
-    pub create_new: bool,
-    /// Base for new branch (commit hash or branch name).
-    pub base_commitish: Option<String>,
-}
-
-/// Prompt user to select or create a branch.
-pub(crate) fn prompt_branch_selection<F>(
-    local_branches: &[String],
-    remote_branches: &[String],
-    generate_suggestion: Option<F>,
-) -> Result<BranchChoice>
-where
-    F: Fn(&str) -> String,
-{
-    if !is_interactive() {
-        return Err(Error::NonInteractive);
-    }
-
-    // First: ask whether to create new or select existing
-    let choices = vec![
-        "Create new branch".to_string(),
-        "Select existing branch".to_string(),
-    ];
-    let mode = run_select("Branch:", choices)?;
-
-    if mode == "Create new branch" {
-        prompt_new_branch_creation(local_branches, remote_branches, generate_suggestion)
-    } else {
-        // Select existing branch with fuzzy search
-        if local_branches.is_empty() {
-            return Err(Error::Selector {
-                message: "No existing branches found".to_string(),
-            });
-        }
-
-        let selection = run_select("Select branch:", local_branches.to_vec())?;
-
-        Ok(BranchChoice {
-            branch: selection,
-            create_new: false,
-            base_commitish: None,
-        })
-    }
-}
-
-/// Prompt the user to create a new branch with base selection.
-fn prompt_new_branch_creation<F>(
-    local_branches: &[String],
-    remote_branches: &[String],
-    generate_suggestion: Option<F>,
-) -> Result<BranchChoice>
-where
-    F: Fn(&str) -> String,
-{
-    // Ask for the base of the new branch
-    let choices = vec![
-        "From local branch".to_string(),
-        "From remote branch".to_string(),
-        "From commit hash".to_string(),
-    ];
-    let base_mode = run_select("Create from:", choices)?;
-
-    let base_commitish = if base_mode == "From local branch" {
-        if local_branches.is_empty() {
-            return Err(Error::Selector {
-                message: "No local branches found".to_string(),
-            });
-        }
-        let selection = run_select("Select base branch:", local_branches.to_vec())?;
-        Some(selection)
-    } else if base_mode == "From remote branch" {
-        if remote_branches.is_empty() {
-            return Err(Error::Selector {
-                message: "No remote branches found. Run `git fetch` first.".to_string(),
-            });
-        }
-        let selection = run_select("Select base branch:", remote_branches.to_vec())?;
-        Some(selection)
-    } else {
-        // From commit hash
-        let hash = read_line("Commit hash:", None)?;
-        Some(hash)
-    };
-
-    // Generate suggestion based on selected base
-    let suggestion = base_commitish
-        .as_ref()
-        .and_then(|base| generate_suggestion.as_ref().map(|f| f(base)));
-
-    // Finally, ask for the new branch name with suggestion
-    let branch_name = read_line("New branch name:", suggestion.as_deref())?;
-
-    Ok(BranchChoice {
-        branch: branch_name,
-        create_new: true,
-        base_commitish,
-    })
-}
-
-/// Prompt user for worktree path.
-pub(crate) fn prompt_worktree_path(suggested: &str) -> Result<PathBuf> {
-    if !is_interactive() {
-        return Err(Error::NonInteractive);
-    }
-
-    let path = read_line("Worktree path:", Some(suggested))?;
-    Ok(PathBuf::from(path))
 }
 
 /// Safety warning information for a worktree.
@@ -407,7 +169,6 @@ pub(crate) struct SafetyWarning {
 struct WorktreeItem {
     display: String,
     path: PathBuf,
-    index: usize,
 }
 
 impl std::fmt::Display for WorktreeItem {
@@ -416,32 +177,12 @@ impl std::fmt::Display for WorktreeItem {
     }
 }
 
-// Unix: Implement SkimItem for WorktreeItem
-#[cfg(unix)]
-impl SkimItem for WorktreeItem {
-    fn text(&self) -> Cow<'_, str> {
-        Cow::Borrowed(&self.display)
-    }
-
-    fn output(&self) -> Cow<'_, str> {
-        Cow::Borrowed(&self.display)
-    }
-
-    // IMPORTANT: get_index() is required in skim 0.14.0+
-    // Without this, Tab key toggles all items instead of current item
-    // See: https://github.com/skim-rs/skim/issues/848
-    fn get_index(&self) -> usize {
-        self.index
-    }
-}
-
 /// Build WorktreeItem list from WorktreeInfo (shared logic).
 fn build_worktree_items(worktrees: &[crate::git::WorktreeInfo]) -> Result<Vec<WorktreeItem>> {
     let items: Vec<WorktreeItem> = worktrees
         .iter()
         .filter(|wt| !wt.is_main)
-        .enumerate()
-        .map(|(index, wt)| {
+        .map(|wt| {
             let branch_info = wt
                 .branch
                 .as_ref()
@@ -451,7 +192,6 @@ fn build_worktree_items(worktrees: &[crate::git::WorktreeInfo]) -> Result<Vec<Wo
             WorktreeItem {
                 display: format!("{} ({}){}", wt.path.display(), branch_info, lock_info),
                 path: wt.path.clone(),
-                index,
             }
         })
         .collect();
@@ -469,8 +209,7 @@ fn build_worktree_items_for_cd(
 ) -> Result<Vec<WorktreeItem>> {
     let items: Vec<WorktreeItem> = worktrees
         .iter()
-        .enumerate()
-        .map(|(index, wt)| {
+        .map(|wt| {
             let branch_info = wt
                 .branch
                 .as_ref()
@@ -487,7 +226,6 @@ fn build_worktree_items_for_cd(
                     lock_info
                 ),
                 path: wt.path.clone(),
-                index,
             }
         })
         .collect();
@@ -499,8 +237,6 @@ fn build_worktree_items_for_cd(
     Ok(items)
 }
 
-/// Prompt user to select a single worktree (Unix: skim).
-#[cfg(unix)]
 pub(crate) fn prompt_worktree_single_selection(
     worktrees: &[crate::git::WorktreeInfo],
 ) -> Result<PathBuf> {
@@ -511,65 +247,21 @@ pub(crate) fn prompt_worktree_single_selection(
     }
 
     let items = build_worktree_items_for_cd(worktrees)?;
+    let entries = items
+        .into_iter()
+        .map(|item| WorktreeEntry {
+            display: item.display,
+            path: item.path,
+        })
+        .collect::<Vec<_>>();
 
-    let options = SkimOptionsBuilder::default()
-        .prompt("Select worktree: ".to_string())
-        .multi(false)
-        .reverse(true)
-        .build()
-        .map_err(|e| Error::Selector {
-            message: format!("Failed to build skim options: {}", e),
-        })?;
-
-    let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
-    for item in &items {
-        let _ = tx.send(Arc::new(item.clone()));
-    }
-    drop(tx);
-
-    let output = Skim::run_with(&options, Some(rx));
-
-    // Note: Do not clear screen here to preserve shell buffer/history
-    // skim handles terminal cleanup automatically on exit
-
-    match output {
-        Some(out) if out.is_abort => Err(Error::Aborted),
-        Some(out) if out.selected_items.is_empty() => Err(Error::Aborted),
-        Some(out) => {
-            let selected_display = out.selected_items[0].output().to_string();
-            items
-                .iter()
-                .find(|item| item.display == selected_display)
-                .map(|item| item.path.clone())
-                .ok_or_else(|| Error::Internal("Selected worktree not found".to_string()))
-        }
-        None => Err(Error::Aborted),
-    }
+    let theme = resolve_ui_theme()?;
+    let selected =
+        interactive::select_worktrees(&entries, SelectMode::Single, "Path", &[STEP_SELECT], theme)?;
+    selected.into_iter().next().ok_or(Error::Aborted)
 }
 
-/// Prompt user to select a single worktree (Windows: inquire fallback).
-#[cfg(windows)]
-pub(crate) fn prompt_worktree_single_selection(
-    worktrees: &[crate::git::WorktreeInfo],
-) -> Result<PathBuf> {
-    if !is_interactive() {
-        return Err(Error::InteractiveRequired {
-            command: "gwtx path",
-        });
-    }
-
-    let items = build_worktree_items_for_cd(worktrees)?;
-
-    let selected = Select::new("Select worktree:", items)
-        .without_help_message()
-        .prompt()
-        .map_err(convert_inquire_error)?;
-
-    Ok(selected.path)
-}
-
-/// Prompt user to select worktrees to remove (Unix: skim).
-#[cfg(unix)]
+/// Prompt user to select worktrees to remove.
 pub(crate) fn prompt_worktree_selection(
     worktrees: &[crate::git::WorktreeInfo],
 ) -> Result<Vec<PathBuf>> {
@@ -578,154 +270,138 @@ pub(crate) fn prompt_worktree_selection(
     }
 
     let items = build_worktree_items(worktrees)?;
+    let entries = items
+        .into_iter()
+        .map(|item| WorktreeEntry {
+            display: item.display,
+            path: item.path,
+        })
+        .collect::<Vec<_>>();
 
-    let options = SkimOptionsBuilder::default()
-        .prompt("Select worktrees to remove: ".to_string())
-        .multi(true)
-        .reverse(true)
-        .no_multi(false) // Ensure multi-select is enabled
-        .build()
-        .map_err(|e| Error::Selector {
-            message: format!("Failed to build skim options: {}", e),
-        })?;
-
-    let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
-    for item in &items {
-        let _ = tx.send(Arc::new(item.clone()));
-    }
-    drop(tx);
-
-    let output = Skim::run_with(&options, Some(rx));
-
-    // Note: Do not clear screen here to preserve shell buffer/history
-    // skim handles terminal cleanup automatically on exit
-
-    match output {
-        Some(out) if out.is_abort => Err(Error::Aborted),
-        Some(out) if out.selected_items.is_empty() => Err(Error::Aborted),
-        Some(out) => {
-            // Get selected display strings
-            let selected_displays: Vec<String> = out
-                .selected_items
-                .iter()
-                .map(|item| item.output().to_string())
-                .collect();
-
-            // Match display strings to original items to get paths
-            let paths: Vec<PathBuf> = selected_displays
-                .iter()
-                .filter_map(|display| {
-                    items
-                        .iter()
-                        .find(|item| &item.display == display)
-                        .map(|item| item.path.clone())
-                })
-                .collect();
-
-            Ok(paths)
-        }
-        None => Err(Error::Aborted),
-    }
+    let theme = resolve_ui_theme()?;
+    interactive::select_worktrees(&entries, SelectMode::Multi, "Remove", &[STEP_SELECT], theme)
 }
 
-/// Prompt user to select worktrees to remove (Windows: inquire fallback).
-#[cfg(windows)]
-pub(crate) fn prompt_worktree_selection(
-    worktrees: &[crate::git::WorktreeInfo],
-) -> Result<Vec<PathBuf>> {
-    if !is_interactive() {
-        return Err(Error::NonInteractive);
-    }
-
-    let items = build_worktree_items(worktrees)?;
-
-    let selected = MultiSelect::new("Select worktrees to remove:", items)
-        .with_help_message("Space to toggle, Enter to confirm, Esc to cancel")
-        .prompt()
-        .map_err(convert_inquire_error)?;
-
-    if selected.is_empty() {
-        return Err(Error::Aborted);
-    }
-
-    Ok(selected.into_iter().map(|item| item.path).collect())
+fn resolve_ui_theme() -> Result<interactive::UiTheme> {
+    let repo_root = git::repository_root()?;
+    let config = config::load(&repo_root)?.unwrap_or_default();
+    Ok(interactive::UiTheme::from_colors(&config.ui.colors))
 }
 
 /// Prompt for confirmation when safety warnings exist.
 pub(crate) fn prompt_remove_confirmation(
     warnings: &[SafetyWarning],
-    color: ColorConfig,
+    _color: ColorConfig,
 ) -> Result<bool> {
-    use inquire::Confirm;
-
     if !is_interactive() {
         return Err(Error::NonInteractive);
     }
 
-    if color.is_enabled() {
-        println!(
-            "\n{}: The following worktrees have unsaved work:",
-            ColorScheme::warning("Warning")
-        );
-        for warning in warnings {
-            println!(
-                "\n  {}",
-                ColorScheme::path(&warning.path.display().to_string())
-            );
-            if warning.modified_count > 0 {
-                println!("    - {} modified file(s)", warning.modified_count);
-            }
-            if warning.deleted_count > 0 {
-                println!("    - {} deleted file(s)", warning.deleted_count);
-            }
-            if warning.untracked_count > 0 {
-                println!("    - {} untracked file(s)", warning.untracked_count);
-            }
-            if warning.has_unpushed {
-                println!("    - {} unpushed commit(s)", warning.unpushed_count);
-            }
+    let mut details = Vec::new();
+    details.push("Warning: The following worktrees have unsaved work:".to_string());
+    for warning in warnings {
+        details.push(format!("  {}", warning.path.display()));
+        if warning.modified_count > 0 {
+            details.push(format!("    - {} modified file(s)", warning.modified_count));
         }
-    } else {
-        println!("\nWarning: The following worktrees have unsaved work:");
-        for warning in warnings {
-            println!("\n  {}", warning.path.display());
-            if warning.modified_count > 0 {
-                println!("    - {} modified file(s)", warning.modified_count);
-            }
-            if warning.deleted_count > 0 {
-                println!("    - {} deleted file(s)", warning.deleted_count);
-            }
-            if warning.untracked_count > 0 {
-                println!("    - {} untracked file(s)", warning.untracked_count);
-            }
-            if warning.has_unpushed {
-                println!("    - {} unpushed commit(s)", warning.unpushed_count);
-            }
+        if warning.deleted_count > 0 {
+            details.push(format!("    - {} deleted file(s)", warning.deleted_count));
         }
+        if warning.untracked_count > 0 {
+            details.push(format!(
+                "    - {} untracked file(s)",
+                warning.untracked_count
+            ));
+        }
+        if warning.has_unpushed {
+            details.push(format!(
+                "    - {} unpushed commit(s)",
+                warning.unpushed_count
+            ));
+        }
+        details.push(String::new());
     }
-    println!();
+    while matches!(details.last(), Some(line) if line.is_empty()) {
+        details.pop();
+    }
 
-    Confirm::new("Do you want to proceed with removal?")
-        .with_default(false)
-        .prompt()
-        .map_err(convert_inquire_error)
+    let theme = resolve_ui_theme()?;
+    interactive::confirm(
+        "Remove",
+        &[STEP_SELECT, STEP_CONFIRM],
+        "Do you want to proceed with removal?",
+        &details,
+        theme,
+    )
 }
 
 /// Prompt user to trust hooks
 pub(crate) fn prompt_trust_hooks(repo_root: &Path) -> Result<bool> {
-    use inquire::Confirm;
+    #[cfg(unix)]
+    {
+        use std::fs::OpenOptions;
+        use std::io::BufRead;
 
-    if !is_interactive() {
-        return Err(Error::NonInteractive);
-    }
+        // Try to open /dev/tty for interactive prompts
+        // This works even when stdin is redirected (e.g., in command substitution)
+        let mut tty = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/tty")
+            .map_err(|e| {
+                // Check raw errno for non-interactive conditions:
+                // - ENOENT: /dev/tty doesn't exist
+                // - ENXIO: No controlling terminal
+                // - ENOTTY: Not a terminal device
+                // Other errors (PermissionDenied, etc.): report as Internal for visibility
+                match e.raw_os_error() {
+                    Some(libc::ENOENT | libc::ENXIO | libc::ENOTTY) => Error::NonInteractive,
+                    _ => Error::Internal(format!("Failed to open /dev/tty: {e}")),
+                }
+            })?;
 
-    Confirm::new(&format!("Trust these hooks for {}?", repo_root.display()))
-        .with_default(false)
-        .with_help_message(
-            "Once trusted, hooks will run automatically on future `gwtx add/remove` commands",
+        writeln!(tty, "Trust these hooks for {}?", repo_root.display())
+            .map_err(|e| Error::Internal(format!("Failed to write to /dev/tty: {e}")))?;
+        writeln!(
+            tty,
+            "Once trusted, hooks will run automatically on future `gwtx add/remove` commands"
         )
-        .prompt()
-        .map_err(convert_inquire_error)
+        .map_err(|e| Error::Internal(format!("Failed to write to /dev/tty: {e}")))?;
+        write!(tty, "Proceed? [y/N]: ")
+            .map_err(|e| Error::Internal(format!("Failed to write to /dev/tty: {e}")))?;
+        tty.flush()
+            .map_err(|e| Error::Internal(format!("Failed to flush /dev/tty: {e}")))?;
+
+        let mut input = String::new();
+        let mut reader = io::BufReader::new(tty);
+        reader
+            .read_line(&mut input)
+            .map_err(|e| Error::Internal(format!("Failed to read input: {e}")))?;
+        let input = input.trim().to_ascii_lowercase();
+
+        Ok(matches!(input.as_str(), "y" | "yes"))
+    }
+    #[cfg(windows)]
+    {
+        if !is_interactive() {
+            return Err(Error::NonInteractive);
+        }
+
+        println!("Trust these hooks for {}?", repo_root.display());
+        println!("Once trusted, hooks will run automatically on future `gwtx add/remove` commands");
+        print!("Proceed? [y/N]: ");
+        io::stdout()
+            .flush()
+            .map_err(|e| Error::Internal(format!("Failed to flush stdout: {e}")))?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .map_err(|e| Error::Internal(format!("Failed to read input: {e}")))?;
+        let input = input.trim().to_ascii_lowercase();
+
+        Ok(matches!(input.as_str(), "y" | "yes"))
+    }
 }
 
 #[cfg(test)]
@@ -760,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_worktree_items_assigns_index() {
+    fn test_build_worktree_items_preserves_order() {
         let worktrees = vec![
             WorktreeInfo {
                 path: PathBuf::from("/repo/.git"),
@@ -788,8 +464,8 @@ mod tests {
         let result = build_worktree_items(&worktrees).unwrap();
 
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].index, 0);
-        assert_eq!(result[1].index, 1);
+        assert_eq!(result[0].path, PathBuf::from("/repo/feature-1"));
+        assert_eq!(result[1].path, PathBuf::from("/repo/feature-2"));
     }
 
     #[test]
@@ -925,15 +601,234 @@ mod tests {
         assert!(result[0].display.contains("(detached)"));
     }
 
-    #[cfg(unix)]
+    // ConflictOption tests
     #[test]
-    fn test_worktree_item_get_index() {
+    fn test_conflict_option_all_count() {
+        assert_eq!(ConflictOption::ALL.len(), 7);
+    }
+
+    #[test]
+    fn test_conflict_option_label_abort() {
+        assert_eq!(
+            ConflictOption::Abort.label(),
+            "abort (cancel the entire operation)"
+        );
+    }
+
+    #[test]
+    fn test_conflict_option_label_skip() {
+        assert_eq!(
+            ConflictOption::Skip.label(),
+            "skip (do not touch the existing file)"
+        );
+    }
+
+    #[test]
+    fn test_conflict_option_label_skip_all() {
+        assert_eq!(
+            ConflictOption::SkipAll.label(),
+            "skip all (skip all future conflicts)"
+        );
+    }
+
+    #[test]
+    fn test_conflict_option_label_overwrite() {
+        assert_eq!(
+            ConflictOption::Overwrite.label(),
+            "overwrite (deletes the existing file)"
+        );
+    }
+
+    #[test]
+    fn test_conflict_option_label_overwrite_all() {
+        assert_eq!(
+            ConflictOption::OverwriteAll.label(),
+            "overwrite all (overwrite all future conflicts)"
+        );
+    }
+
+    #[test]
+    fn test_conflict_option_label_backup() {
+        assert_eq!(
+            ConflictOption::Backup.label(),
+            "backup (renames existing to *.bak)"
+        );
+    }
+
+    #[test]
+    fn test_conflict_option_label_backup_all() {
+        assert_eq!(
+            ConflictOption::BackupAll.label(),
+            "backup all (backup all future conflicts)"
+        );
+    }
+
+    #[test]
+    fn test_conflict_option_from_label_abort() {
+        let result = ConflictOption::from_label("abort (cancel the entire operation)");
+        assert_eq!(result, Some(ConflictOption::Abort));
+    }
+
+    #[test]
+    fn test_conflict_option_from_label_skip() {
+        let result = ConflictOption::from_label("skip (do not touch the existing file)");
+        assert_eq!(result, Some(ConflictOption::Skip));
+    }
+
+    #[test]
+    fn test_conflict_option_from_label_skip_all() {
+        let result = ConflictOption::from_label("skip all (skip all future conflicts)");
+        assert_eq!(result, Some(ConflictOption::SkipAll));
+    }
+
+    #[test]
+    fn test_conflict_option_from_label_overwrite() {
+        let result = ConflictOption::from_label("overwrite (deletes the existing file)");
+        assert_eq!(result, Some(ConflictOption::Overwrite));
+    }
+
+    #[test]
+    fn test_conflict_option_from_label_overwrite_all() {
+        let result = ConflictOption::from_label("overwrite all (overwrite all future conflicts)");
+        assert_eq!(result, Some(ConflictOption::OverwriteAll));
+    }
+
+    #[test]
+    fn test_conflict_option_from_label_backup() {
+        let result = ConflictOption::from_label("backup (renames existing to *.bak)");
+        assert_eq!(result, Some(ConflictOption::Backup));
+    }
+
+    #[test]
+    fn test_conflict_option_from_label_backup_all() {
+        let result = ConflictOption::from_label("backup all (backup all future conflicts)");
+        assert_eq!(result, Some(ConflictOption::BackupAll));
+    }
+
+    #[test]
+    fn test_conflict_option_from_label_invalid() {
+        let result = ConflictOption::from_label("invalid option");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_conflict_option_to_choice_abort() {
+        let choice = ConflictOption::Abort.to_choice();
+        assert!(matches!(choice.mode, OnConflict::Abort));
+        assert!(!choice.apply_to_all);
+    }
+
+    #[test]
+    fn test_conflict_option_to_choice_skip() {
+        let choice = ConflictOption::Skip.to_choice();
+        assert!(matches!(choice.mode, OnConflict::Skip));
+        assert!(!choice.apply_to_all);
+    }
+
+    #[test]
+    fn test_conflict_option_to_choice_skip_all() {
+        let choice = ConflictOption::SkipAll.to_choice();
+        assert!(matches!(choice.mode, OnConflict::Skip));
+        assert!(choice.apply_to_all);
+    }
+
+    #[test]
+    fn test_conflict_option_to_choice_overwrite() {
+        let choice = ConflictOption::Overwrite.to_choice();
+        assert!(matches!(choice.mode, OnConflict::Overwrite));
+        assert!(!choice.apply_to_all);
+    }
+
+    #[test]
+    fn test_conflict_option_to_choice_overwrite_all() {
+        let choice = ConflictOption::OverwriteAll.to_choice();
+        assert!(matches!(choice.mode, OnConflict::Overwrite));
+        assert!(choice.apply_to_all);
+    }
+
+    #[test]
+    fn test_conflict_option_to_choice_backup() {
+        let choice = ConflictOption::Backup.to_choice();
+        assert!(matches!(choice.mode, OnConflict::Backup));
+        assert!(!choice.apply_to_all);
+    }
+
+    #[test]
+    fn test_conflict_option_to_choice_backup_all() {
+        let choice = ConflictOption::BackupAll.to_choice();
+        assert!(matches!(choice.mode, OnConflict::Backup));
+        assert!(choice.apply_to_all);
+    }
+
+    // WorktreeItem tests
+    #[test]
+    fn test_worktree_item_display() {
         let item = WorktreeItem {
-            display: "test".to_string(),
-            path: PathBuf::from("/test"),
-            index: 42,
+            display: "test display".to_string(),
+            path: PathBuf::from("/test/path"),
+        };
+        assert_eq!(format!("{}", item), "test display");
+    }
+
+    // SafetyWarning tests
+    #[test]
+    fn test_safety_warning_creation() {
+        let warning = SafetyWarning {
+            path: PathBuf::from("/test/worktree"),
+            has_uncommitted: true,
+            modified_count: 3,
+            deleted_count: 1,
+            untracked_count: 2,
+            has_unpushed: true,
+            unpushed_count: 5,
         };
 
-        assert_eq!(item.get_index(), 42);
+        assert_eq!(warning.path, PathBuf::from("/test/worktree"));
+        assert!(warning.has_uncommitted);
+        assert_eq!(warning.modified_count, 3);
+        assert_eq!(warning.deleted_count, 1);
+        assert_eq!(warning.untracked_count, 2);
+        assert!(warning.has_unpushed);
+        assert_eq!(warning.unpushed_count, 5);
+    }
+
+    #[test]
+    fn test_safety_warning_clean() {
+        let warning = SafetyWarning {
+            path: PathBuf::from("/test/clean"),
+            has_uncommitted: false,
+            modified_count: 0,
+            deleted_count: 0,
+            untracked_count: 0,
+            has_unpushed: false,
+            unpushed_count: 0,
+        };
+
+        assert!(!warning.has_uncommitted);
+        assert_eq!(warning.modified_count, 0);
+        assert!(!warning.has_unpushed);
+    }
+
+    // ConflictChoice tests
+    #[test]
+    fn test_conflict_choice_debug() {
+        let choice = ConflictChoice {
+            mode: OnConflict::Skip,
+            apply_to_all: true,
+        };
+        let debug_str = format!("{:?}", choice);
+        assert!(debug_str.contains("Skip"));
+        assert!(debug_str.contains("true"));
+    }
+
+    #[test]
+    fn test_conflict_choice_clone() {
+        let choice = ConflictChoice {
+            mode: OnConflict::Backup,
+            apply_to_all: false,
+        };
+        let cloned = choice;
+        assert!(matches!(cloned.mode, OnConflict::Backup));
+        assert!(!cloned.apply_to_all);
     }
 }

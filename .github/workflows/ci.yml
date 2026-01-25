@@ -140,3 +140,27 @@ jobs:
             echo "Please run: gwtx config schema > schema/gwtx.schema.json"
             exit 1
           fi
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3
+      - name: Build test container
+        run: |
+          docker build \
+            -t gwtx-test \
+            -f docker/Dockerfile.test \
+            .
+      - name: Run integration tests
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}:/workspace:rw" \
+            -e CI=true \
+            -e RUST_BACKTRACE=1 \
+            -e CARGO_TARGET_DIR=/tmp/target \
+            gwtx-test \
+            cargo test --features impure-test

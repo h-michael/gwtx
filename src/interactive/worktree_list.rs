@@ -1,0 +1,796 @@
+use crate::error::{Error, Result};
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use indexmap::IndexSet;
+use nucleo::pattern::{CaseMatching, Normalization};
+use nucleo::{Config, Nucleo, Utf32String};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::Modifier;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap};
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use super::{UiTheme, read_key_event, truncate_text_for_width, with_terminal};
+
+pub(crate) const STEP_SELECT: &str = "Select worktrees";
+pub(crate) const STEP_CONFIRM: &str = "Confirm";
+
+#[derive(Debug, Clone)]
+pub(crate) struct WorktreeEntry {
+    pub display: String,
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelectMode {
+    Single,
+    Multi,
+}
+
+pub(crate) fn select_worktrees(
+    entries: &[WorktreeEntry],
+    mode: SelectMode,
+    command_name: &str,
+    breadcrumbs: &[&str],
+    theme: UiTheme,
+) -> Result<Vec<PathBuf>> {
+    if entries.is_empty() {
+        return Err(Error::Selector {
+            message: "No items to select".to_string(),
+        });
+    }
+
+    with_terminal(|terminal| {
+        run_worktree_list(terminal, entries, mode, command_name, breadcrumbs, theme)
+    })
+}
+
+fn run_worktree_list(
+    terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<Box<dyn std::io::Write>>>,
+    entries: &[WorktreeEntry],
+    mode: SelectMode,
+    command_name: &str,
+    breadcrumbs: &[&str],
+    theme: UiTheme,
+) -> Result<Vec<PathBuf>> {
+    let mut state = WorktreeListState::new();
+    let mut matcher = NucleoState::new(entries)?;
+    matcher.update_query(&state.query);
+    matcher.tick(&mut state)?;
+    let mut last_tick = Instant::now();
+
+    loop {
+        matcher.tick(&mut state)?;
+        terminal
+            .draw(|frame| draw_worktree_list(frame, &state, mode, command_name, breadcrumbs, theme))
+            .map_err(|e| Error::Selector {
+                message: format!("Failed to draw UI: {e}"),
+            })?;
+
+        let timeout = Duration::from_millis(200);
+        let elapsed = last_tick.elapsed();
+        if elapsed >= timeout {
+            last_tick = Instant::now();
+        }
+
+        if let Some(key) = read_key_event(timeout)? {
+            match handle_key_event(&mut state, mode, key)? {
+                InputAction::None => {}
+                InputAction::QueryChanged => matcher.update_query(&state.query),
+                InputAction::Accept => return finalize_selection(&state, mode),
+            }
+        }
+    }
+}
+
+struct WorktreeListState {
+    query: String,
+    cursor: usize,
+    selected: IndexSet<PathBuf>,
+    matches: Vec<WorktreeEntry>,
+}
+
+impl WorktreeListState {
+    fn new() -> Self {
+        Self {
+            query: String::new(),
+            cursor: 0,
+            selected: IndexSet::new(),
+            matches: Vec::new(),
+        }
+    }
+
+    fn current_entry(&self) -> Option<&WorktreeEntry> {
+        self.matches.get(self.cursor)
+    }
+
+    fn move_up(&mut self) {
+        if self.cursor > 0 {
+            self.cursor -= 1;
+        }
+    }
+
+    fn move_down(&mut self) {
+        if self.cursor + 1 < self.matches.len() {
+            self.cursor += 1;
+        }
+    }
+
+    fn reset_cursor_if_needed(&mut self) {
+        if self.matches.is_empty() {
+            self.cursor = 0;
+        } else if self.cursor >= self.matches.len() {
+            self.cursor = self.matches.len() - 1;
+        }
+    }
+}
+
+struct NucleoState {
+    nucleo: Nucleo<WorktreeEntry>,
+    last_query: String,
+}
+
+impl NucleoState {
+    fn new(entries: &[WorktreeEntry]) -> Result<Self> {
+        let notify = Arc::new(|| {});
+        let nucleo = Nucleo::new(Config::DEFAULT, notify, None, 1);
+        let injector = nucleo.injector();
+
+        for entry in entries {
+            let item = entry.clone();
+            injector.push(item, |item, columns| {
+                if let Some(column) = columns.first_mut() {
+                    *column = Utf32String::from(item.display.as_str());
+                }
+            });
+        }
+
+        Ok(Self {
+            nucleo,
+            last_query: String::new(),
+        })
+    }
+
+    fn update_query(&mut self, query: &str) {
+        let append = query.starts_with(&self.last_query);
+        self.nucleo
+            .pattern
+            .reparse(0, query, CaseMatching::Smart, Normalization::Smart, append);
+        self.last_query = query.to_string();
+    }
+
+    fn tick(&mut self, state: &mut WorktreeListState) -> Result<()> {
+        self.nucleo.tick(10);
+        let snapshot = self.nucleo.snapshot();
+        state.matches = snapshot
+            .matched_items(0..snapshot.matched_item_count())
+            .map(|item| item.data.clone())
+            .collect();
+        state.reset_cursor_if_needed();
+        Ok(())
+    }
+}
+
+enum InputAction {
+    None,
+    QueryChanged,
+    Accept,
+}
+
+fn handle_key_event(
+    state: &mut WorktreeListState,
+    mode: SelectMode,
+    key: KeyEvent,
+) -> Result<InputAction> {
+    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        return Err(Error::Aborted);
+    }
+    match key.code {
+        KeyCode::Esc => return Err(Error::Aborted),
+        KeyCode::Enter => return Ok(InputAction::Accept),
+        KeyCode::Up => state.move_up(),
+        KeyCode::Down => state.move_down(),
+        KeyCode::Backspace => {
+            state.query.pop();
+            return Ok(InputAction::QueryChanged);
+        }
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                match c {
+                    'p' | 'k' => state.move_up(),
+                    'n' | 'j' => state.move_down(),
+                    'u' => {
+                        state.query.clear();
+                        return Ok(InputAction::QueryChanged);
+                    }
+                    _ => {}
+                }
+            } else if c == ' ' && mode == SelectMode::Multi {
+                if let Some(entry) = state.current_entry() {
+                    let path = entry.path.clone();
+                    if !state.selected.shift_remove(&path) {
+                        state.selected.insert(path);
+                    }
+                }
+            } else {
+                state.query.push(c);
+                return Ok(InputAction::QueryChanged);
+            }
+        }
+        KeyCode::Tab => {}
+        _ => {}
+    }
+
+    Ok(InputAction::None)
+}
+
+fn draw_worktree_list(
+    frame: &mut ratatui::Frame<'_>,
+    state: &WorktreeListState,
+    mode: SelectMode,
+    command_name: &str,
+    breadcrumbs: &[&str],
+    theme: UiTheme,
+) {
+    let size = frame.area();
+    let header_height = 2;
+    let body_padding = 1;
+    let body_height = size.height.saturating_sub(header_height + body_padding);
+
+    let header = Rect::new(size.x, size.y, size.width, header_height);
+    let body = Rect::new(
+        size.x,
+        size.y + header_height + body_padding,
+        size.width,
+        body_height,
+    );
+
+    let key_hints = match mode {
+        SelectMode::Single => "[Enter] select  [Esc] cancel  [↑/↓] move  [Ctrl+U] clear",
+        SelectMode::Multi => "[Enter] confirm  [Esc] cancel  [Space] toggle  [Ctrl+U] clear",
+    };
+
+    let mut title_spans = vec![Span::styled(
+        format!("{command_name}: "),
+        theme.header_style(),
+    )];
+    for (i, crumb) in breadcrumbs.iter().enumerate() {
+        if i > 0 {
+            title_spans.push(Span::styled(" > ", theme.muted_style()));
+        }
+        if i == breadcrumbs.len() - 1 {
+            title_spans.push(Span::styled(*crumb, theme.accent_style()));
+        } else {
+            title_spans.push(Span::styled(*crumb, theme.header_style()));
+        }
+    }
+
+    let title_line = Line::from(title_spans);
+    let key_hints_line = Line::from(Span::styled(key_hints, theme.footer_style()));
+    let header_block = Paragraph::new(vec![title_line, key_hints_line]);
+    frame.render_widget(header_block, header);
+
+    let body_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(body);
+
+    let left_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .split(body_chunks[0]);
+
+    let search_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(theme.border_style())
+        .padding(Padding::new(1, 1, 0, 0))
+        .title(Span::styled("Search", theme.title_style()));
+    let search_line = Line::from(vec![
+        Span::styled("Search: ", theme.search_style()),
+        Span::styled(
+            &state.query,
+            theme.search_style().add_modifier(Modifier::BOLD),
+        ),
+    ]);
+    frame.render_widget(
+        Paragraph::new(search_line).block(search_block),
+        left_chunks[0],
+    );
+
+    let items: Vec<ListItem> = state
+        .matches
+        .iter()
+        .enumerate()
+        .map(|(pos, entry)| {
+            let prefix = if mode == SelectMode::Multi {
+                if state.selected.contains(&entry.path) {
+                    "[x] "
+                } else {
+                    "[ ] "
+                }
+            } else {
+                ""
+            };
+            let line = format!("{prefix}{}", entry.display);
+            let style = if pos == state.cursor {
+                theme.selection_style()
+            } else {
+                theme.text_style()
+            };
+            ListItem::new(Line::from(line)).style(style)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(theme.border_style())
+                .padding(Padding::new(1, 1, 0, 0))
+                .title(Span::styled(STEP_SELECT, theme.title_style())),
+        )
+        .style(theme.text_style());
+    frame.render_widget(list, left_chunks[1]);
+
+    let preview = state
+        .current_entry()
+        .map(|entry| entry.display.clone())
+        .unwrap_or_else(|| "-".to_string());
+    let preview = truncate_text_for_width(preview, body_chunks[1].width.saturating_sub(2));
+    let preview_widget = Paragraph::new(preview)
+        .style(theme.text_style())
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(theme.border_style())
+                .padding(Padding::new(1, 1, 0, 0))
+                .title(Span::styled("Worktree Info", theme.title_style())),
+        )
+        .wrap(Wrap { trim: true });
+    frame.render_widget(preview_widget, body_chunks[1]);
+}
+
+fn finalize_selection(state: &WorktreeListState, mode: SelectMode) -> Result<Vec<PathBuf>> {
+    let mut selected = Vec::new();
+    match mode {
+        SelectMode::Single => {
+            if let Some(entry) = state.current_entry() {
+                selected.push(entry.path.clone());
+            }
+        }
+        SelectMode::Multi => {
+            selected.extend(state.selected.iter().cloned());
+        }
+    }
+
+    if selected.is_empty() {
+        return Err(Error::Aborted);
+    }
+
+    Ok(selected)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_entries() -> Vec<WorktreeEntry> {
+        vec![
+            WorktreeEntry {
+                display: "main".to_string(),
+                path: PathBuf::from("/repo"),
+            },
+            WorktreeEntry {
+                display: "feature-a".to_string(),
+                path: PathBuf::from("/repo-feature-a"),
+            },
+            WorktreeEntry {
+                display: "feature-b".to_string(),
+                path: PathBuf::from("/repo-feature-b"),
+            },
+        ]
+    }
+
+    #[test]
+    fn test_worktree_entry_creation() {
+        let entry = WorktreeEntry {
+            display: "test-branch".to_string(),
+            path: PathBuf::from("/path/to/worktree"),
+        };
+        assert_eq!(entry.display, "test-branch");
+        assert_eq!(entry.path, PathBuf::from("/path/to/worktree"));
+    }
+
+    #[test]
+    fn test_select_mode_equality() {
+        assert_eq!(SelectMode::Single, SelectMode::Single);
+        assert_eq!(SelectMode::Multi, SelectMode::Multi);
+        assert_ne!(SelectMode::Single, SelectMode::Multi);
+    }
+
+    #[test]
+    fn test_worktree_list_state_new() {
+        let state = WorktreeListState::new();
+        assert_eq!(state.query, "");
+        assert_eq!(state.cursor, 0);
+        assert!(state.selected.is_empty());
+        assert!(state.matches.is_empty());
+    }
+
+    #[test]
+    fn test_worktree_list_state_move_up() {
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+        state.cursor = 2;
+
+        state.move_up();
+        assert_eq!(state.cursor, 1);
+
+        state.move_up();
+        assert_eq!(state.cursor, 0);
+
+        // Should not go below 0
+        state.move_up();
+        assert_eq!(state.cursor, 0);
+    }
+
+    #[test]
+    fn test_worktree_list_state_move_down() {
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+
+        state.move_down();
+        assert_eq!(state.cursor, 1);
+
+        state.move_down();
+        assert_eq!(state.cursor, 2);
+
+        // Should not exceed matches.len() - 1
+        state.move_down();
+        assert_eq!(state.cursor, 2);
+    }
+
+    #[test]
+    fn test_worktree_list_state_current_entry() {
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+
+        let entry = state.current_entry().unwrap();
+        assert_eq!(entry.display, "main");
+
+        state.cursor = 1;
+        let entry = state.current_entry().unwrap();
+        assert_eq!(entry.display, "feature-a");
+    }
+
+    #[test]
+    fn test_worktree_list_state_current_entry_empty() {
+        let state = WorktreeListState::new();
+        assert!(state.current_entry().is_none());
+    }
+
+    #[test]
+    fn test_worktree_list_state_reset_cursor_if_needed() {
+        let mut state = WorktreeListState::new();
+        state.cursor = 5;
+        state.matches = create_test_entries(); // 3 entries
+
+        state.reset_cursor_if_needed();
+        assert_eq!(state.cursor, 2); // Should be clamped to len - 1
+
+        state.matches.clear();
+        state.cursor = 5;
+        state.reset_cursor_if_needed();
+        assert_eq!(state.cursor, 0); // Should be 0 when empty
+    }
+
+    #[test]
+    fn test_worktree_list_state_selection() {
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+
+        // Add to selection
+        state.selected.insert(PathBuf::from("/repo"));
+        assert!(state.selected.contains(&PathBuf::from("/repo")));
+        assert_eq!(state.selected.len(), 1);
+
+        // Add another
+        state.selected.insert(PathBuf::from("/repo-feature-a"));
+        assert_eq!(state.selected.len(), 2);
+
+        // Remove from selection
+        state.selected.shift_remove(&PathBuf::from("/repo"));
+        assert!(!state.selected.contains(&PathBuf::from("/repo")));
+        assert_eq!(state.selected.len(), 1);
+    }
+
+    // handle_key_event tests
+
+    fn create_key_event(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent::new(code, modifiers)
+    }
+
+    #[test]
+    fn test_handle_key_event_escape_aborts() {
+        let mut state = WorktreeListState::new();
+        let key = create_key_event(KeyCode::Esc, KeyModifiers::NONE);
+
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_handle_key_event_ctrl_c_aborts() {
+        let mut state = WorktreeListState::new();
+        let key = create_key_event(KeyCode::Char('c'), KeyModifiers::CONTROL);
+
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_handle_key_event_enter_accepts() {
+        let mut state = WorktreeListState::new();
+        let key = create_key_event(KeyCode::Enter, KeyModifiers::NONE);
+
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(matches!(result, Ok(InputAction::Accept)));
+    }
+
+    #[test]
+    fn test_handle_key_event_arrow_keys() {
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+
+        // Down arrow
+        let key = create_key_event(KeyCode::Down, KeyModifiers::NONE);
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(matches!(result, Ok(InputAction::None)));
+        assert_eq!(state.cursor, 1);
+
+        // Up arrow
+        let key = create_key_event(KeyCode::Up, KeyModifiers::NONE);
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(matches!(result, Ok(InputAction::None)));
+        assert_eq!(state.cursor, 0);
+    }
+
+    #[test]
+    fn test_handle_key_event_ctrl_navigation() {
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+
+        // Ctrl+n (down)
+        let key = create_key_event(KeyCode::Char('n'), KeyModifiers::CONTROL);
+        handle_key_event(&mut state, SelectMode::Single, key).unwrap();
+        assert_eq!(state.cursor, 1);
+
+        // Ctrl+p (up)
+        let key = create_key_event(KeyCode::Char('p'), KeyModifiers::CONTROL);
+        handle_key_event(&mut state, SelectMode::Single, key).unwrap();
+        assert_eq!(state.cursor, 0);
+
+        // Ctrl+j (down)
+        let key = create_key_event(KeyCode::Char('j'), KeyModifiers::CONTROL);
+        handle_key_event(&mut state, SelectMode::Single, key).unwrap();
+        assert_eq!(state.cursor, 1);
+
+        // Ctrl+k (up)
+        let key = create_key_event(KeyCode::Char('k'), KeyModifiers::CONTROL);
+        handle_key_event(&mut state, SelectMode::Single, key).unwrap();
+        assert_eq!(state.cursor, 0);
+    }
+
+    #[test]
+    fn test_handle_key_event_query_input() {
+        let mut state = WorktreeListState::new();
+
+        // Type 'a'
+        let key = create_key_event(KeyCode::Char('a'), KeyModifiers::NONE);
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(matches!(result, Ok(InputAction::QueryChanged)));
+        assert_eq!(state.query, "a");
+
+        // Type 'b'
+        let key = create_key_event(KeyCode::Char('b'), KeyModifiers::NONE);
+        handle_key_event(&mut state, SelectMode::Single, key).unwrap();
+        assert_eq!(state.query, "ab");
+    }
+
+    #[test]
+    fn test_handle_key_event_backspace() {
+        let mut state = WorktreeListState::new();
+        state.query = "test".to_string();
+
+        let key = create_key_event(KeyCode::Backspace, KeyModifiers::NONE);
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(matches!(result, Ok(InputAction::QueryChanged)));
+        assert_eq!(state.query, "tes");
+    }
+
+    #[test]
+    fn test_handle_key_event_ctrl_u_clears_query() {
+        let mut state = WorktreeListState::new();
+        state.query = "test query".to_string();
+
+        let key = create_key_event(KeyCode::Char('u'), KeyModifiers::CONTROL);
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(matches!(result, Ok(InputAction::QueryChanged)));
+        assert_eq!(state.query, "");
+    }
+
+    #[test]
+    fn test_handle_key_event_space_toggles_selection_multi() {
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+
+        // Space in Multi mode toggles selection
+        let key = create_key_event(KeyCode::Char(' '), KeyModifiers::NONE);
+        handle_key_event(&mut state, SelectMode::Multi, key).unwrap();
+        assert!(state.selected.contains(&PathBuf::from("/repo")));
+
+        // Space again deselects
+        let key = create_key_event(KeyCode::Char(' '), KeyModifiers::NONE);
+        handle_key_event(&mut state, SelectMode::Multi, key).unwrap();
+        assert!(!state.selected.contains(&PathBuf::from("/repo")));
+    }
+
+    #[test]
+    fn test_handle_key_event_space_in_single_mode_adds_to_query() {
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+
+        // Space in Single mode adds to query
+        let key = create_key_event(KeyCode::Char(' '), KeyModifiers::NONE);
+        let result = handle_key_event(&mut state, SelectMode::Single, key);
+        assert!(matches!(result, Ok(InputAction::QueryChanged)));
+        assert_eq!(state.query, " ");
+        assert!(state.selected.is_empty());
+    }
+
+    // draw_worktree_list tests
+
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    #[test]
+    fn test_draw_worktree_list_renders_single_mode() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+        let theme = UiTheme::default();
+
+        terminal
+            .draw(|frame| {
+                draw_worktree_list(
+                    frame,
+                    &state,
+                    SelectMode::Single,
+                    "test",
+                    &[STEP_SELECT],
+                    theme,
+                );
+            })
+            .unwrap();
+
+        // Verify it renders without panic
+        assert!(terminal.backend().buffer().area.width > 0);
+    }
+
+    #[test]
+    fn test_draw_worktree_list_renders_multi_mode() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+        state.selected.insert(PathBuf::from("/repo"));
+        let theme = UiTheme::default();
+
+        terminal
+            .draw(|frame| {
+                draw_worktree_list(
+                    frame,
+                    &state,
+                    SelectMode::Multi,
+                    "test",
+                    &[STEP_SELECT],
+                    theme,
+                );
+            })
+            .unwrap();
+
+        assert!(terminal.backend().buffer().area.width > 0);
+    }
+
+    #[test]
+    fn test_draw_worktree_list_with_query() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+        state.query = "feature".to_string();
+        let theme = UiTheme::default();
+
+        terminal
+            .draw(|frame| {
+                draw_worktree_list(
+                    frame,
+                    &state,
+                    SelectMode::Single,
+                    "test",
+                    &[STEP_SELECT],
+                    theme,
+                );
+            })
+            .unwrap();
+
+        // Verify search query is rendered in the Search box
+        // Layout: header(2) + body_padding(1) = 3 (body start)
+        // Search box: top border at y=3, content at y=4, bottom border at y=5
+        let buffer = terminal.backend().buffer();
+        let search_row: String = (0..buffer.area.width)
+            .map(|x| {
+                buffer
+                    .cell((x, 4))
+                    .unwrap()
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ')
+            })
+            .collect();
+        assert!(search_row.contains("feature"));
+    }
+
+    #[test]
+    fn test_draw_worktree_list_empty_matches() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let state = WorktreeListState::new();
+        let theme = UiTheme::default();
+
+        terminal
+            .draw(|frame| {
+                draw_worktree_list(
+                    frame,
+                    &state,
+                    SelectMode::Single,
+                    "test",
+                    &[STEP_SELECT],
+                    theme,
+                );
+            })
+            .unwrap();
+
+        assert!(terminal.backend().buffer().area.width > 0);
+    }
+
+    #[test]
+    fn test_draw_worktree_list_cursor_position() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = WorktreeListState::new();
+        state.matches = create_test_entries();
+        state.cursor = 1; // Select second item
+        let theme = UiTheme::default();
+
+        terminal
+            .draw(|frame| {
+                draw_worktree_list(
+                    frame,
+                    &state,
+                    SelectMode::Single,
+                    "test",
+                    &[STEP_SELECT],
+                    theme,
+                );
+            })
+            .unwrap();
+
+        assert!(terminal.backend().buffer().area.width > 0);
+    }
+}
