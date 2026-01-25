@@ -1,6 +1,7 @@
 use crate::error::{Error, Result};
 
 use std::collections::HashSet;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -9,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 /// Config file name
 pub const CONFIG_FILE_NAME: &str = ".gwtx.yaml";
+const GLOBAL_CONFIG_DIR_NAME: &str = "gwtx";
+const GLOBAL_CONFIG_FILE_NAME: &str = "config.yaml";
 
 /// Load config from the repository root. Returns None if config file doesn't exist.
 pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
@@ -27,6 +30,78 @@ pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
 
     // Convert to Config (validates and transforms)
     Config::try_from(raw).map(Some)
+}
+
+/// Load global config. Returns None if config file doesn't exist or config dir is unknown.
+pub(crate) fn load_global() -> Result<Option<Config>> {
+    let config_path = match global_config_path() {
+        Some(path) => path,
+        None => return Ok(None),
+    };
+
+    if !config_path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&config_path)?;
+
+    let raw: RawConfig = serde_yaml::from_str(&content).map_err(|e| Error::GlobalConfigParse {
+        message: e.to_string(),
+    })?;
+
+    validate_global_config(&raw)?;
+
+    let config = Config::try_from(raw).map_err(|err| match err {
+        Error::ConfigValidation { message } => Error::GlobalConfigValidation { message },
+        other => other,
+    })?;
+
+    Ok(Some(config))
+}
+
+/// Load config merged with global config. Repo config overrides global settings.
+pub(crate) fn load_merged(repo_root: &Path) -> Result<Config> {
+    let global = load_global()?;
+    let repo = load(repo_root)?.unwrap_or_default();
+    Ok(merge_with_global(repo, global.as_ref()))
+}
+
+pub(crate) fn global_config_path() -> Option<PathBuf> {
+    let base = env::var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(dirs::config_dir)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))?;
+
+    Some(
+        base.join(GLOBAL_CONFIG_DIR_NAME)
+            .join(GLOBAL_CONFIG_FILE_NAME),
+    )
+}
+
+fn validate_global_config(raw: &RawConfig) -> Result<()> {
+    let mut errors = Vec::new();
+
+    if raw.hooks.has_hooks() {
+        errors.push("  - hooks are not allowed in global config".to_string());
+    }
+    if !raw.mkdir.is_empty() {
+        errors.push("  - mkdir entries are not allowed in global config".to_string());
+    }
+    if !raw.link.is_empty() {
+        errors.push("  - link entries are not allowed in global config".to_string());
+    }
+    if !raw.copy.is_empty() {
+        errors.push("  - copy entries are not allowed in global config".to_string());
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::GlobalConfigValidation {
+            message: errors.join("\n"),
+        })
+    }
 }
 
 // Raw types for permissive YAML parsing. Missing fields get default values
@@ -163,6 +238,7 @@ pub(crate) struct HookEntry {
     description = "Hooks that run before/after worktree operations"
 )]
 struct RawHooks {
+    hook_shell: Option<String>,
     #[serde(default)]
     pre_add: Vec<HookEntry>,
     #[serde(default)]
@@ -171,6 +247,15 @@ struct RawHooks {
     pre_remove: Vec<HookEntry>,
     #[serde(default)]
     post_remove: Vec<HookEntry>,
+}
+
+impl RawHooks {
+    fn has_hooks(&self) -> bool {
+        !self.pre_add.is_empty()
+            || !self.post_add.is_empty()
+            || !self.pre_remove.is_empty()
+            || !self.post_remove.is_empty()
+    }
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
@@ -221,7 +306,7 @@ struct RawCopy {
 // Validated types used by the application. Guaranteed valid after TryFrom conversion.
 
 /// Root configuration from .gwtx.yaml.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Config {
     pub defaults: Defaults,
     pub worktree: Worktree,
@@ -230,6 +315,32 @@ pub(crate) struct Config {
     pub mkdir: Vec<Mkdir>,
     pub link: Vec<Link>,
     pub copy: Vec<Copy>,
+}
+
+pub(crate) fn merge_with_global(mut repo: Config, global: Option<&Config>) -> Config {
+    let Some(global) = global else {
+        return repo;
+    };
+
+    if repo.defaults.on_conflict.is_none() {
+        repo.defaults.on_conflict = global.defaults.on_conflict;
+    }
+
+    if repo.worktree.path_template.is_none() {
+        repo.worktree.path_template = global.worktree.path_template.clone();
+    }
+
+    if repo.worktree.branch_template.is_none() {
+        repo.worktree.branch_template = global.worktree.branch_template.clone();
+    }
+
+    repo.ui.colors = repo.ui.colors.merge_with_fallback(&global.ui.colors);
+
+    if repo.hooks.hook_shell.is_none() {
+        repo.hooks.hook_shell = global.hooks.hook_shell.clone();
+    }
+
+    repo
 }
 
 impl TryFrom<RawConfig> for Config {
@@ -407,6 +518,7 @@ impl TryFrom<RawConfig> for Config {
             },
             ui: Ui { colors: ui_colors },
             hooks: Hooks {
+                hook_shell: raw.hooks.hook_shell,
                 pre_add: raw.hooks.pre_add,
                 post_add: raw.hooks.post_add,
                 pre_remove: raw.hooks.pre_remove,
@@ -447,7 +559,7 @@ fn validate_path(path: &Path) -> Option<String> {
 }
 
 /// Global options.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Defaults {
     pub on_conflict: Option<OnConflict>,
 }
@@ -483,6 +595,28 @@ pub(crate) struct UiColors {
     pub selection_fg: Option<UiColor>,
     pub warning: Option<UiColor>,
     pub error: Option<UiColor>,
+}
+
+impl UiColors {
+    fn merge_with_fallback(&self, fallback: &UiColors) -> UiColors {
+        UiColors {
+            border: self.border.or(fallback.border),
+            text: self.text.or(fallback.text),
+            accent: self.accent.or(fallback.accent),
+            header: self.header.or(fallback.header),
+            footer: self.footer.or(fallback.footer),
+            title: self.title.or(fallback.title),
+            label: self.label.or(fallback.label),
+            muted: self.muted.or(fallback.muted),
+            disabled: self.disabled.or(fallback.disabled),
+            search: self.search.or(fallback.search),
+            preview: self.preview.or(fallback.preview),
+            selection_bg: self.selection_bg.or(fallback.selection_bg),
+            selection_fg: self.selection_fg.or(fallback.selection_fg),
+            warning: self.warning.or(fallback.warning),
+            error: self.error.or(fallback.error),
+        }
+    }
 }
 
 impl Worktree {
@@ -861,6 +995,7 @@ fn validate_branch_template(template: &str) -> Vec<String> {
 /// Hook commands configuration.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Hooks {
+    pub hook_shell: Option<String>,
     pub pre_add: Vec<HookEntry>,
     pub post_add: Vec<HookEntry>,
     pub pre_remove: Vec<HookEntry>,
@@ -878,7 +1013,7 @@ impl Hooks {
 }
 
 /// Directory creation configuration entry.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Mkdir {
     pub path: PathBuf,
     pub description: Option<String>,
@@ -895,7 +1030,7 @@ pub(crate) struct Link {
 }
 
 /// File copy configuration entry.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Copy {
     pub source: PathBuf,
     pub target: PathBuf, // Always resolved (no Option)
@@ -1358,6 +1493,15 @@ worktree:
             ..Default::default()
         };
         assert!(hooks.has_hooks());
+    }
+
+    #[test]
+    fn test_hooks_has_hooks_ignores_hook_shell_only() {
+        let hooks = Hooks {
+            hook_shell: Some("pwsh".to_string()),
+            ..Default::default()
+        };
+        assert!(!hooks.has_hooks());
     }
 
     #[test]

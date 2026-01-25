@@ -11,6 +11,12 @@ pub(crate) enum Error {
     #[error("Your '.gwtx.yaml' configuration is invalid.\n\n{message}")]
     ConfigValidation { message: String },
 
+    #[error("Failed to parse global config: {message}")]
+    GlobalConfigParse { message: String },
+
+    #[error("Your global configuration is invalid.\n\n{message}")]
+    GlobalConfigValidation { message: String },
+
     #[error("Not inside a git repository. Run this command from within a git repository.")]
     NotInGitRepo,
 
@@ -120,6 +126,12 @@ pub(crate) enum Error {
 
     #[error("Config file not found: {path}")]
     ConfigNotFound { path: PathBuf },
+
+    #[error("Config file already exists: {path}")]
+    ConfigAlreadyExists { path: PathBuf },
+
+    #[error("Global config directory not found")]
+    GlobalConfigDirNotFound,
 
     #[error("No hooks defined in .gwtx.yaml")]
     NoHooksDefined,

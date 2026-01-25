@@ -284,7 +284,7 @@ pub(crate) fn prompt_worktree_selection(
 
 fn resolve_ui_theme() -> Result<interactive::UiTheme> {
     let repo_root = git::repository_root()?;
-    let config = config::load(&repo_root)?.unwrap_or_default();
+    let config = config::load_merged(&repo_root)?;
     Ok(interactive::UiTheme::from_colors(&config.ui.colors))
 }
 

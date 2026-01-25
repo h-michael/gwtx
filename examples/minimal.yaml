@@ -1,4 +1,4 @@
-## yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
 
 # Minimal gwtx configuration
 # Copy this file to .gwtx.yaml in your repository root to get started.
