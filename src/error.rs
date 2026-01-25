@@ -79,6 +79,9 @@ pub(crate) enum Error {
     #[error("git worktree remove failed:\n{stderr}")]
     GitWorktreeRemoveFailed { stderr: String },
 
+    #[error("git command failed: {command}\n{stderr}")]
+    GitCommandFailed { command: String, stderr: String },
+
     #[cfg(windows)]
     #[error(
         "Failed to create symlink: permission denied\n  Enable Developer Mode in Windows Settings or run as administrator."

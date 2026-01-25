@@ -473,6 +473,9 @@ EXAMPLES:
     gwtx trust
         Trust hooks in .gwtx.yaml for the current repository
 
+    gwtx trust --yes
+        Trust hooks without prompting
+
     gwtx trust --show
         Show hooks and trust status without trusting
 
@@ -484,6 +487,10 @@ EXAMPLES:
 pub(crate) struct TrustArgs {
     /// Path to repository (defaults to current directory)
     pub path: Option<PathBuf>,
+
+    /// Trust without confirmation prompt
+    #[arg(short = 'y', long)]
+    pub yes: bool,
 
     /// Show trusted hooks without trusting
     #[arg(long)]
@@ -541,8 +548,7 @@ FEATURES:
 
     gwtx switch Command
         Interactive fuzzy finder to select and switch to a worktree.
-        Unix: Uses skim for advanced fuzzy finding
-        Windows: Uses selection menu from inquire
+        Uses ratatui-based UI across platforms
 
         Note: gwtx switch requires shell integration.
         Without shell integration, use: cd \"$(gwtx path)\"

@@ -42,7 +42,7 @@ pub(crate) fn resolve_conflict(target: &Path, mode: OnConflict) -> Result<Confli
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "impure-test"))]
 mod tests {
     use super::*;
 

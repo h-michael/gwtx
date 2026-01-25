@@ -41,11 +41,16 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "impure-test"))]
 use crate::config::HookEntry;
 
 const TRUST_DIR_NAME: &str = "gwtx/trusted";
 const TRUST_VERSION: u32 = 1;
+
+#[cfg(all(test, feature = "impure-test"))]
+thread_local! {
+    static TEST_TRUST_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
 
 /// Represents a trusted configuration entry.
 ///
@@ -68,10 +73,26 @@ pub(crate) struct TrustEntry {
 /// Uses XDG_DATA_HOME or falls back to ~/.local/share on Linux
 /// Path format: ~/.local/share/gwtx/trusted/v1/
 fn trust_dir() -> Result<PathBuf> {
+    #[cfg(all(test, feature = "impure-test"))]
+    {
+        if let Some(path) = TEST_TRUST_DIR.with(|dir| dir.borrow().clone()) {
+            return Ok(path);
+        }
+    }
+    if let Some(path) = std::env::var_os("GWTX_TRUST_DIR") {
+        return Ok(PathBuf::from(path));
+    }
     let base = dirs::data_dir().ok_or(Error::TrustStorageNotFound)?;
     Ok(base
         .join(TRUST_DIR_NAME)
         .join(format!("v{}", TRUST_VERSION)))
+}
+
+#[cfg(all(test, feature = "impure-test"))]
+fn set_test_trust_dir(path: PathBuf) {
+    TEST_TRUST_DIR.with(|dir| {
+        *dir.borrow_mut() = Some(path);
+    });
 }
 
 /// Compute SHA256 hash of full configuration.
@@ -385,7 +406,7 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
                             Ok(trust_entry) => entries.push(trust_entry),
                             Err(e) => {
                                 eprintln!(
-                                    "Warning: Failed to parse trust file: {}\n         Error: {}",
+                                    "Failed to parse trust file: {}\n         {}",
                                     file_path.display(),
                                     e
                                 );
@@ -393,7 +414,7 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
                         },
                         Err(e) => {
                             eprintln!(
-                                "Warning: Failed to read trust file: {}\n         Error: {}",
+                                "Failed to read trust file: {}\n         {}",
                                 file_path.display(),
                                 e
                             );
@@ -407,11 +428,18 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
     Ok(entries)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "impure-test"))]
 mod tests {
     use super::*;
-    use crate::config::{Config, Defaults, Hooks, Mkdir, Worktree};
+    use crate::config::{Config, Defaults, Hooks, Mkdir, Ui, Worktree};
+    use std::sync::OnceLock;
     use tempfile::TempDir;
+
+    fn init_test_data_dir() {
+        static DATA_DIR: OnceLock<TempDir> = OnceLock::new();
+        let dir = DATA_DIR.get_or_init(|| TempDir::new().unwrap());
+        set_test_trust_dir(dir.path().to_path_buf());
+    }
 
     fn create_test_config() -> Config {
         Config {
@@ -420,6 +448,7 @@ mod tests {
                 path_template: None,
                 branch_template: None,
             },
+            ui: Ui::default(),
             hooks: Hooks::default(),
             mkdir: Vec::new(),
             link: Vec::new(),
@@ -514,6 +543,7 @@ mod tests {
 
     #[test]
     fn test_trust_and_untrust() {
+        init_test_data_dir();
         let temp_dir = TempDir::new().unwrap();
         let mut config = create_test_config();
         config.hooks = Hooks {
@@ -541,6 +571,7 @@ mod tests {
 
     #[test]
     fn test_list_trusted_no_error() {
+        init_test_data_dir();
         // Just ensure list_trusted() doesn't error
         // Length may vary depending on system state
         let _entries = list_trusted().unwrap();
@@ -548,6 +579,7 @@ mod tests {
 
     #[test]
     fn test_list_trusted_with_trusted_repo() {
+        init_test_data_dir();
         let temp_dir = TempDir::new().unwrap();
         let mut config = create_test_config();
         config.hooks = Hooks {
@@ -583,6 +615,7 @@ mod tests {
 
     #[test]
     fn test_list_trusted_multiple_repos() {
+        init_test_data_dir();
         let temp_dir1 = TempDir::new().unwrap();
         let temp_dir2 = TempDir::new().unwrap();
 
@@ -636,6 +669,7 @@ mod tests {
 
     #[test]
     fn test_trust_entry_contains_main_worktree_path() {
+        init_test_data_dir();
         let temp_dir = TempDir::new().unwrap();
         let mut config = create_test_config();
         config.hooks = Hooks {
@@ -684,6 +718,7 @@ mod tests {
 
     #[test]
     fn test_is_trusted_hooks_changed() {
+        init_test_data_dir();
         let temp_dir = TempDir::new().unwrap();
         let mut config1 = create_test_config();
         config1.hooks = Hooks {
@@ -717,6 +752,7 @@ mod tests {
 
     #[test]
     fn test_is_trusted_hooks_removed() {
+        init_test_data_dir();
         let temp_dir = TempDir::new().unwrap();
         let mut config = create_test_config();
         config.hooks = Hooks {
@@ -745,6 +781,7 @@ mod tests {
     fn test_is_trusted_different_main_worktree_path() {
         use std::fs;
 
+        init_test_data_dir();
         let temp_dir1 = TempDir::new().unwrap();
         let temp_dir2 = TempDir::new().unwrap();
 
@@ -795,6 +832,7 @@ mod tests {
     fn test_is_trusted_corrupted_trust_file() {
         use std::fs;
 
+        init_test_data_dir();
         let temp_dir = TempDir::new().unwrap();
         let mut config = create_test_config();
         config.hooks = Hooks {

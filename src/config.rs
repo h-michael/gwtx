@@ -44,6 +44,8 @@ pub(crate) struct RawConfig {
     #[serde(default)]
     worktree: RawWorktree,
     #[serde(default)]
+    ui: RawUi,
+    #[serde(default)]
     hooks: RawHooks,
     #[serde(default)]
     mkdir: Vec<RawMkdir>,
@@ -74,6 +76,70 @@ struct RawDefaults {
 struct RawWorktree {
     path_template: Option<String>,
     branch_template: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(
+    rename = "Ui",
+    title = "UI",
+    description = "Interactive UI configuration"
+)]
+struct RawUi {
+    #[serde(default)]
+    colors: RawUiColors,
+}
+
+#[derive(Debug, Deserialize, Default, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(
+    rename = "UiColors",
+    title = "UI Colors",
+    description = "Color overrides for interactive UI"
+)]
+struct RawUiColors {
+    border: Option<String>,
+    text: Option<String>,
+    accent: Option<String>,
+    header: Option<String>,
+    footer: Option<String>,
+    title: Option<String>,
+    label: Option<String>,
+    muted: Option<String>,
+    disabled: Option<String>,
+    search: Option<String>,
+    preview: Option<String>,
+    selection_bg: Option<String>,
+    selection_fg: Option<String>,
+    warning: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UiColor {
+    Named(UiColorName),
+    Rgb(u8, u8, u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UiColorName {
+    Default,
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    Gray,
+    DarkGray,
+    LightRed,
+    LightGreen,
+    LightYellow,
+    LightBlue,
+    LightMagenta,
+    LightCyan,
+    White,
 }
 
 /// Hook entry with command and optional description.
@@ -159,6 +225,7 @@ struct RawCopy {
 pub(crate) struct Config {
     pub defaults: Defaults,
     pub worktree: Worktree,
+    pub ui: Ui,
     pub hooks: Hooks,
     pub mkdir: Vec<Mkdir>,
     pub link: Vec<Link>,
@@ -285,6 +352,51 @@ impl TryFrom<RawConfig> for Config {
             });
         }
 
+        let mut ui_colors = UiColors::default();
+        let mut parse_ui_color = |field: &str, value: Option<String>| {
+            if let Some(value) = value {
+                match UiColor::parse(&value) {
+                    Ok(color) => Some(color),
+                    Err(err) => {
+                        errors.push(format!("  - ui.colors.{field}: {err}"));
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        };
+
+        ui_colors.border = parse_ui_color("border", raw.ui.colors.border);
+        ui_colors.text = parse_ui_color("text", raw.ui.colors.text);
+        ui_colors.accent = parse_ui_color("accent", raw.ui.colors.accent);
+        ui_colors.header = parse_ui_color("header", raw.ui.colors.header);
+        ui_colors.footer = parse_ui_color("footer", raw.ui.colors.footer);
+        ui_colors.title = parse_ui_color("title", raw.ui.colors.title);
+        ui_colors.label = parse_ui_color("label", raw.ui.colors.label);
+        ui_colors.muted = parse_ui_color("muted", raw.ui.colors.muted);
+        ui_colors.disabled = parse_ui_color("disabled", raw.ui.colors.disabled);
+        ui_colors.search = parse_ui_color("search", raw.ui.colors.search);
+        ui_colors.preview = parse_ui_color("preview", raw.ui.colors.preview);
+        ui_colors.selection_bg = parse_ui_color("selection_bg", raw.ui.colors.selection_bg);
+        ui_colors.selection_fg = parse_ui_color("selection_fg", raw.ui.colors.selection_fg);
+        ui_colors.warning = parse_ui_color("warning", raw.ui.colors.warning);
+        ui_colors.error = parse_ui_color("error", raw.ui.colors.error);
+
+        // Validate branch_template if present
+        if let Some(ref branch_template) = raw.worktree.branch_template {
+            let template_errors = validate_branch_template(branch_template);
+            for error in template_errors {
+                errors.push(format!("  - worktree.branch_template: {}", error));
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(Error::ConfigValidation {
+                message: errors.join("\n"),
+            });
+        }
+
         Ok(Config {
             defaults: Defaults {
                 on_conflict: raw.defaults.on_conflict,
@@ -293,6 +405,7 @@ impl TryFrom<RawConfig> for Config {
                 path_template: raw.worktree.path_template,
                 branch_template: raw.worktree.branch_template,
             },
+            ui: Ui { colors: ui_colors },
             hooks: Hooks {
                 pre_add: raw.hooks.pre_add,
                 post_add: raw.hooks.post_add,
@@ -346,6 +459,32 @@ pub(crate) struct Worktree {
     pub branch_template: Option<String>,
 }
 
+/// Interactive UI configuration.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct Ui {
+    pub colors: UiColors,
+}
+
+/// Customizable UI colors.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct UiColors {
+    pub border: Option<UiColor>,
+    pub text: Option<UiColor>,
+    pub accent: Option<UiColor>,
+    pub header: Option<UiColor>,
+    pub footer: Option<UiColor>,
+    pub title: Option<UiColor>,
+    pub label: Option<UiColor>,
+    pub muted: Option<UiColor>,
+    pub disabled: Option<UiColor>,
+    pub search: Option<UiColor>,
+    pub preview: Option<UiColor>,
+    pub selection_bg: Option<UiColor>,
+    pub selection_fg: Option<UiColor>,
+    pub warning: Option<UiColor>,
+    pub error: Option<UiColor>,
+}
+
 impl Worktree {
     /// Generate suggested worktree path based on configuration.
     /// Returns None if no worktree config is set.
@@ -374,6 +513,99 @@ impl Worktree {
 pub(crate) struct BranchTemplateEnv {
     pub commitish: String,
     pub repository: String,
+}
+
+impl UiColor {
+    pub(crate) fn parse(value: &str) -> std::result::Result<Self, String> {
+        let value = value.trim();
+        if let Some(hex) = value.strip_prefix('#') {
+            if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err("invalid hex color (expected #RRGGBB)".to_string());
+            }
+            let r =
+                u8::from_str_radix(&hex[0..2], 16).map_err(|_| "invalid hex color".to_string())?;
+            let g =
+                u8::from_str_radix(&hex[2..4], 16).map_err(|_| "invalid hex color".to_string())?;
+            let b =
+                u8::from_str_radix(&hex[4..6], 16).map_err(|_| "invalid hex color".to_string())?;
+            return Ok(UiColor::Rgb(r, g, b));
+        }
+
+        let normalized = value.to_ascii_lowercase();
+        let name = match normalized.as_str() {
+            "default" => UiColorName::Default,
+            "black" => UiColorName::Black,
+            "red" => UiColorName::Red,
+            "green" => UiColorName::Green,
+            "yellow" => UiColorName::Yellow,
+            "blue" => UiColorName::Blue,
+            "magenta" => UiColorName::Magenta,
+            "cyan" => UiColorName::Cyan,
+            "gray" => UiColorName::Gray,
+            "dark-gray" => UiColorName::DarkGray,
+            "light-red" => UiColorName::LightRed,
+            "light-green" => UiColorName::LightGreen,
+            "light-yellow" => UiColorName::LightYellow,
+            "light-blue" => UiColorName::LightBlue,
+            "light-magenta" => UiColorName::LightMagenta,
+            "light-cyan" => UiColorName::LightCyan,
+            "white" => UiColorName::White,
+            _ => {
+                return Err("unknown color name".to_string());
+            }
+        };
+        Ok(UiColor::Named(name))
+    }
+
+    fn as_string(self) -> String {
+        match self {
+            UiColor::Rgb(r, g, b) => format!("#{:02x}{:02x}{:02x}", r, g, b),
+            UiColor::Named(name) => name.as_str().to_string(),
+        }
+    }
+}
+
+impl UiColorName {
+    fn as_str(self) -> &'static str {
+        match self {
+            UiColorName::Default => "default",
+            UiColorName::Black => "black",
+            UiColorName::Red => "red",
+            UiColorName::Green => "green",
+            UiColorName::Yellow => "yellow",
+            UiColorName::Blue => "blue",
+            UiColorName::Magenta => "magenta",
+            UiColorName::Cyan => "cyan",
+            UiColorName::Gray => "gray",
+            UiColorName::DarkGray => "dark-gray",
+            UiColorName::LightRed => "light-red",
+            UiColorName::LightGreen => "light-green",
+            UiColorName::LightYellow => "light-yellow",
+            UiColorName::LightBlue => "light-blue",
+            UiColorName::LightMagenta => "light-magenta",
+            UiColorName::LightCyan => "light-cyan",
+            UiColorName::White => "white",
+        }
+    }
+}
+
+impl Serialize for UiColor {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.as_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for UiColor {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        UiColor::parse(&value).map_err(serde::de::Error::custom)
+    }
 }
 
 /// Expand variables in a string template.
@@ -443,26 +675,45 @@ fn expand_variables(template: &str, branch: &str, repository: &str) -> String {
 /// - {{commitish}}: The commit-ish (branch name, tag, commit hash, etc.)
 /// - {{repository}}: Repository name
 /// - {{strftime(FORMAT)}}: Date formatting
+/// - {{{literal}}}: Outputs literal {{literal}} (escape syntax)
 fn expand_branch_template(template: &str, env: &BranchTemplateEnv) -> String {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
 
     while let Some(ch) = chars.next() {
         if ch == '{' {
-            // Check if it's {{ (double brace)
+            // Check if it's {{ or {{{ (double or triple brace)
             if chars.peek() == Some(&'{') {
                 chars.next(); // consume second {
+
+                // Check for triple brace (escape syntax)
+                let is_escape = chars.peek() == Some(&'{');
+                if is_escape {
+                    chars.next(); // consume third {
+                }
 
                 let mut content = String::new();
                 let mut found_close = false;
 
                 while let Some(c) = chars.next() {
                     if c == '}' {
-                        // For {{var}}, need to find second }
+                        // For {{var}} or {{{var}}}, need to find matching closing braces
                         if chars.peek() == Some(&'}') {
                             chars.next(); // consume second }
-                            found_close = true;
-                            break;
+                            if is_escape {
+                                // For {{{var}}}, need third }
+                                if chars.peek() == Some(&'}') {
+                                    chars.next(); // consume third }
+                                    found_close = true;
+                                    break;
+                                } else {
+                                    // Only two }, treat as content
+                                    content.push_str("}}");
+                                }
+                            } else {
+                                found_close = true;
+                                break;
+                            }
                         } else {
                             content.push(c);
                         }
@@ -473,11 +724,23 @@ fn expand_branch_template(template: &str, env: &BranchTemplateEnv) -> String {
 
                 if found_close {
                     let trimmed = content.trim();
-                    let expanded = expand_branch_variable(trimmed, env);
-                    result.push_str(&expanded);
+                    if is_escape {
+                        // Triple brace: output as literal {{content}}
+                        result.push_str("{{");
+                        result.push_str(trimmed);
+                        result.push_str("}}");
+                    } else {
+                        // Double brace: expand as variable
+                        let expanded = expand_branch_variable(trimmed, env);
+                        result.push_str(&expanded);
+                    }
                 } else {
-                    // Unclosed {{, keep original
-                    result.push_str("{{");
+                    // Unclosed braces, keep original
+                    if is_escape {
+                        result.push_str("{{{");
+                    } else {
+                        result.push_str("{{");
+                    }
                     result.push_str(&content);
                 }
             } else {
@@ -513,6 +776,86 @@ fn expand_branch_variable(var: &str, env: &BranchTemplateEnv) -> String {
             format!("{{{}}}", var)
         }
     }
+}
+
+/// Extract all template variables from a branch template.
+/// Returns a Vec of variable names found (e.g., ["commitish", "strftime(...)"])
+/// Triple braces ({{{...}}}) are escape syntax and not included in the result.
+fn extract_template_variables(template: &str) -> Vec<String> {
+    let mut variables = Vec::new();
+    let mut chars = template.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '{' && chars.peek() == Some(&'{') {
+            chars.next(); // consume second {
+
+            // Check for triple brace (escape syntax)
+            let is_escape = chars.peek() == Some(&'{');
+            if is_escape {
+                chars.next(); // consume third {
+            }
+
+            let mut content = String::new();
+            let mut found_close = false;
+
+            while let Some(c) = chars.next() {
+                if c == '}' {
+                    if chars.peek() == Some(&'}') {
+                        chars.next(); // consume second }
+                        if is_escape {
+                            // For {{{var}}}, need third }
+                            if chars.peek() == Some(&'}') {
+                                chars.next(); // consume third }
+                                found_close = true;
+                                break;
+                            } else {
+                                content.push_str("}}");
+                            }
+                        } else {
+                            found_close = true;
+                            break;
+                        }
+                    } else {
+                        content.push(c);
+                    }
+                } else {
+                    content.push(c);
+                }
+            }
+
+            // Only add to variables if it's a double brace (not escape syntax)
+            if found_close && !is_escape {
+                variables.push(content.trim().to_string());
+            }
+        }
+    }
+
+    variables
+}
+
+/// Check if a template variable is valid for branch_template expansion.
+/// Valid variables: commitish, repository, strftime(...)
+fn is_valid_branch_template_variable(var: &str) -> bool {
+    match var {
+        "commitish" | "repository" => true,
+        _ if var.starts_with("strftime(") && var.ends_with(')') => true,
+        _ => false,
+    }
+}
+
+/// Validate branch_template and return error messages for invalid variables.
+fn validate_branch_template(template: &str) -> Vec<String> {
+    let variables = extract_template_variables(template);
+    variables
+        .iter()
+        .filter(|var| !is_valid_branch_template_variable(var))
+        .map(|var| {
+            format!(
+                "Invalid template variable '{{{}}}' in branch_template. Valid variables: {{{{commitish}}}}, {{{{repository}}}}, {{{{strftime(...)}}}}",
+                var
+            )
+        })
+        .collect()
 }
 
 /// Hook commands configuration.
@@ -1394,5 +1737,241 @@ worktree:
         assert!(result.starts_with("main-"));
         // The invalid part should be returned as literal
         assert!(result.contains("strftime"));
+    }
+
+    #[test]
+    fn test_ui_color_parse_named_colors() {
+        assert_eq!(
+            UiColor::parse("red").unwrap(),
+            UiColor::Named(UiColorName::Red)
+        );
+        assert_eq!(
+            UiColor::parse("blue").unwrap(),
+            UiColor::Named(UiColorName::Blue)
+        );
+        assert_eq!(
+            UiColor::parse("dark-gray").unwrap(),
+            UiColor::Named(UiColorName::DarkGray)
+        );
+        assert_eq!(
+            UiColor::parse("light-cyan").unwrap(),
+            UiColor::Named(UiColorName::LightCyan)
+        );
+        assert_eq!(
+            UiColor::parse("default").unwrap(),
+            UiColor::Named(UiColorName::Default)
+        );
+    }
+
+    #[test]
+    fn test_ui_color_parse_case_insensitive() {
+        assert_eq!(
+            UiColor::parse("RED").unwrap(),
+            UiColor::Named(UiColorName::Red)
+        );
+        assert_eq!(
+            UiColor::parse("Dark-Gray").unwrap(),
+            UiColor::Named(UiColorName::DarkGray)
+        );
+        assert_eq!(
+            UiColor::parse("LIGHT-BLUE").unwrap(),
+            UiColor::Named(UiColorName::LightBlue)
+        );
+    }
+
+    #[test]
+    fn test_ui_color_parse_rgb_hex() {
+        assert_eq!(UiColor::parse("#ff0000").unwrap(), UiColor::Rgb(255, 0, 0));
+        assert_eq!(UiColor::parse("#00ff00").unwrap(), UiColor::Rgb(0, 255, 0));
+        assert_eq!(UiColor::parse("#0000ff").unwrap(), UiColor::Rgb(0, 0, 255));
+        assert_eq!(
+            UiColor::parse("#123abc").unwrap(),
+            UiColor::Rgb(0x12, 0x3a, 0xbc)
+        );
+        // Case insensitive hex
+        assert_eq!(
+            UiColor::parse("#AABBCC").unwrap(),
+            UiColor::Rgb(170, 187, 204)
+        );
+    }
+
+    #[test]
+    fn test_ui_color_parse_whitespace_trimmed() {
+        assert_eq!(
+            UiColor::parse("  red  ").unwrap(),
+            UiColor::Named(UiColorName::Red)
+        );
+        assert_eq!(
+            UiColor::parse("  #ff0000  ").unwrap(),
+            UiColor::Rgb(255, 0, 0)
+        );
+    }
+
+    #[test]
+    fn test_ui_color_parse_invalid() {
+        assert!(UiColor::parse("invalid-color").is_err());
+        assert!(UiColor::parse("#ff").is_err()); // too short
+        assert!(UiColor::parse("#ff00ff00").is_err()); // too long
+        assert!(UiColor::parse("#gggggg").is_err()); // invalid hex
+        assert!(UiColor::parse("").is_err());
+    }
+
+    #[test]
+    fn test_ui_colors_config_parsing() {
+        let yaml = r##"
+ui:
+  colors:
+    border: dark-gray
+    accent: "#ff5500"
+    selection_bg: blue
+"##;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+
+        assert_eq!(
+            config.ui.colors.border,
+            Some(UiColor::Named(UiColorName::DarkGray))
+        );
+        assert_eq!(config.ui.colors.accent, Some(UiColor::Rgb(255, 85, 0)));
+        assert_eq!(
+            config.ui.colors.selection_bg,
+            Some(UiColor::Named(UiColorName::Blue))
+        );
+        assert!(config.ui.colors.text.is_none());
+    }
+
+    #[test]
+    fn test_ui_colors_invalid_color_error() {
+        let yaml = r#"
+ui:
+  colors:
+    border: invalid-color
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = Config::try_from(raw);
+        assert!(result.is_err());
+    }
+
+    // branch_template validation tests
+    #[test]
+    fn test_branch_template_valid_variables() {
+        let yaml = r#"
+worktree:
+  branch_template: "feature/{{commitish}}-{{repository}}"
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = Config::try_from(raw);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_branch_template_valid_strftime() {
+        let yaml = r#"
+worktree:
+  branch_template: "{{commitish}}-{{strftime(%Y%m%d)}}"
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = Config::try_from(raw);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_branch_template_invalid_variable() {
+        let yaml = r#"
+worktree:
+  branch_template: "feature/{{branch}}-{{commitish}}"
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = Config::try_from(raw);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("branch_template"));
+        assert!(error.contains("Invalid template variable"));
+    }
+
+    #[test]
+    fn test_branch_template_multiple_invalid_variables() {
+        let yaml = r#"
+worktree:
+  branch_template: "{{branch}}/{{invalidvar}}"
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = Config::try_from(raw);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("branch"));
+        assert!(error.contains("invalidvar"));
+    }
+
+    #[test]
+    fn test_extract_template_variables() {
+        let vars = extract_template_variables("prefix-{{commitish}}-{{repository}}");
+        assert_eq!(vars.len(), 2);
+        assert!(vars.contains(&"commitish".to_string()));
+        assert!(vars.contains(&"repository".to_string()));
+    }
+
+    #[test]
+    fn test_extract_template_variables_with_strftime() {
+        let vars = extract_template_variables("{{strftime(%Y-%m-%d)}}-{{commitish}}");
+        assert_eq!(vars.len(), 2);
+        assert!(vars.contains(&"strftime(%Y-%m-%d)".to_string()));
+        assert!(vars.contains(&"commitish".to_string()));
+    }
+
+    #[test]
+    fn test_is_valid_branch_template_variable() {
+        assert!(is_valid_branch_template_variable("commitish"));
+        assert!(is_valid_branch_template_variable("repository"));
+        assert!(is_valid_branch_template_variable("strftime(%Y)"));
+        assert!(!is_valid_branch_template_variable("branch"));
+        assert!(!is_valid_branch_template_variable("invalidvar"));
+        assert!(!is_valid_branch_template_variable("strftime(invalid"));
+    }
+
+    // Triple brace escape syntax tests
+    #[test]
+    fn test_branch_template_triple_brace_escape() {
+        let yaml = r#"
+worktree:
+  branch_template: "feature/{{{branch}}}-{{commitish}}"
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = Config::try_from(raw);
+        assert!(result.is_ok()); // {{{branch}}} is escape, not a variable
+    }
+
+    #[test]
+    fn test_expand_branch_template_triple_brace() {
+        let env = BranchTemplateEnv {
+            commitish: "main".to_string(),
+            repository: "repo".to_string(),
+        };
+        let result = expand_branch_template("{{{branch}}}-{{commitish}}", &env);
+        assert_eq!(result, "{{branch}}-main");
+    }
+
+    #[test]
+    fn test_expand_branch_template_triple_brace_only() {
+        let env = BranchTemplateEnv {
+            commitish: "main".to_string(),
+            repository: "repo".to_string(),
+        };
+        let result = expand_branch_template("{{{literal}}}", &env);
+        assert_eq!(result, "{{literal}}");
+    }
+
+    #[test]
+    fn test_extract_template_variables_skips_triple_brace() {
+        let vars = extract_template_variables("{{{branch}}}-{{commitish}}");
+        assert_eq!(vars.len(), 1);
+        assert!(vars.contains(&"commitish".to_string()));
+        assert!(!vars.contains(&"branch".to_string()));
+    }
+
+    #[test]
+    fn test_extract_template_variables_triple_brace_only() {
+        let vars = extract_template_variables("{{{branch}}}");
+        assert!(vars.is_empty());
     }
 }

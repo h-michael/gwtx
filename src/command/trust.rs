@@ -1,5 +1,5 @@
 use crate::cli::TrustArgs;
-use crate::color::{ColorConfig, ColorScheme};
+use crate::color::{self, ColorConfig, ColorScheme};
 use crate::config::ConfigSnapshot;
 use crate::{config, error::Error, error::Result, git, prompt, trust};
 
@@ -43,6 +43,8 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),
     })?;
+
+    color::set_cli_theme(&config.ui.colors);
 
     if !config.hooks.has_hooks() {
         return Err(Error::NoHooksDefined);
@@ -325,16 +327,27 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
         // Compare snapshots to detect changes
         let new_snapshot = ConfigSnapshot::from_config(new_config);
         if old_snapshot == &new_snapshot {
-            // Configuration hasn't changed, already trusted
-            println!(
-                "Configuration is already trusted for: {}",
-                repo_root.display()
-            );
-            return Ok(());
+            let is_trusted = trust::is_trusted(&main_worktree_path, &config)?;
+            if is_trusted {
+                // Configuration hasn't changed, already trusted
+                println!(
+                    "Configuration is already trusted for: {}",
+                    repo_root.display()
+                );
+                return Ok(());
+            }
+            // Snapshot matches but trust hash doesn't; fall through to re-trust.
         }
 
         // Configuration has changed, show diff
         display_config_diff(old_snapshot, new_config, use_color);
+    }
+
+    if args.yes {
+        trust::trust(&main_worktree_path, &config)?;
+        println!("\n✓ Configuration trusted for: {}", repo_root.display());
+        println!("These hooks will now run automatically on gwtx add/remove commands.");
+        return Ok(());
     }
 
     // Prompt for confirmation
@@ -349,8 +362,12 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
         }
     } else {
         // Non-interactive: cannot prompt
-        eprintln!("\nError: Cannot prompt for confirmation in non-interactive mode.");
+        eprintln!(
+            "\n{}",
+            ColorScheme::error("Cannot prompt for confirmation in non-interactive mode.")
+        );
         eprintln!("Run this command in an interactive terminal to trust configuration.");
+        eprintln!("Or pass --yes to trust without prompting.");
         return Err(Error::NonInteractive);
     }
 
@@ -688,4 +705,203 @@ fn display_config_diff(old: &ConfigSnapshot, new: &config::Config, use_color: bo
     }
 
     println!("────────────────────────────────────────────────────────");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_diff_prefix_added_with_color() {
+        let result = diff_prefix(true, true);
+        // Should contain "+" (with color codes)
+        assert!(result.contains('+'));
+    }
+
+    #[test]
+    fn test_diff_prefix_removed_with_color() {
+        let result = diff_prefix(true, false);
+        // Should contain "-" (with color codes)
+        assert!(result.contains('-'));
+    }
+
+    #[test]
+    fn test_diff_prefix_added_no_color() {
+        let result = diff_prefix(false, true);
+        assert_eq!(result, "+");
+    }
+
+    #[test]
+    fn test_diff_prefix_removed_no_color() {
+        let result = diff_prefix(false, false);
+        assert_eq!(result, "-");
+    }
+
+    #[test]
+    fn test_order_changed_marker_with_color() {
+        let result = order_changed_marker(true);
+        assert!(result.contains("order changed"));
+    }
+
+    #[test]
+    fn test_order_changed_marker_no_color() {
+        let result = order_changed_marker(false);
+        assert_eq!(result, "(order changed)");
+    }
+
+    #[test]
+    fn test_diff_list_no_changes() {
+        let old = vec![1, 2, 3];
+        let new = vec![1, 2, 3];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert!(removed.is_empty());
+        assert!(added.is_empty());
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_item_removed() {
+        let old = vec![1, 2, 3];
+        let new = vec![1, 3];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert_eq!(removed, vec![2]);
+        assert!(added.is_empty());
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_item_added() {
+        let old = vec![1, 3];
+        let new = vec![1, 2, 3];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert!(removed.is_empty());
+        assert_eq!(added, vec![2]);
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_item_replaced() {
+        let old = vec![1, 2, 3];
+        let new = vec![1, 4, 3];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert_eq!(removed, vec![2]);
+        assert_eq!(added, vec![4]);
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_order_changed() {
+        let old = vec![1, 2, 3];
+        let new = vec![3, 2, 1];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert!(removed.is_empty());
+        assert!(added.is_empty());
+        assert!(order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_empty_old() {
+        let old: Vec<i32> = vec![];
+        let new = vec![1, 2, 3];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert!(removed.is_empty());
+        assert_eq!(added, vec![1, 2, 3]);
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_empty_new() {
+        let old = vec![1, 2, 3];
+        let new: Vec<i32> = vec![];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert_eq!(removed, vec![1, 2, 3]);
+        assert!(added.is_empty());
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_both_empty() {
+        let old: Vec<i32> = vec![];
+        let new: Vec<i32> = vec![];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert!(removed.is_empty());
+        assert!(added.is_empty());
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_with_strings() {
+        let old = vec!["a".to_string(), "b".to_string()];
+        let new = vec!["b".to_string(), "c".to_string()];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert_eq!(removed, vec!["a".to_string()]);
+        assert_eq!(added, vec!["c".to_string()]);
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_duplicates_in_old() {
+        let old = vec![1, 1, 2];
+        let new = vec![1, 2];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert_eq!(removed, vec![1]); // One duplicate removed
+        assert!(added.is_empty());
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_diff_list_duplicates_in_new() {
+        let old = vec![1, 2];
+        let new = vec![1, 1, 2];
+
+        let (removed, added, order_changed) = diff_list(&old, &new);
+
+        assert!(removed.is_empty());
+        assert_eq!(added, vec![1]); // One duplicate added
+        assert!(!order_changed);
+    }
+
+    #[test]
+    fn test_format_on_conflict_abort() {
+        let result = format_on_conflict(&config::OnConflict::Abort);
+        assert_eq!(result, "abort");
+    }
+
+    #[test]
+    fn test_format_on_conflict_skip() {
+        let result = format_on_conflict(&config::OnConflict::Skip);
+        assert_eq!(result, "skip");
+    }
+
+    #[test]
+    fn test_format_on_conflict_overwrite() {
+        let result = format_on_conflict(&config::OnConflict::Overwrite);
+        assert_eq!(result, "overwrite");
+    }
+
+    #[test]
+    fn test_format_on_conflict_backup() {
+        let result = format_on_conflict(&config::OnConflict::Backup);
+        assert_eq!(result, "backup");
+    }
 }

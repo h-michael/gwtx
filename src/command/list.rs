@@ -1,5 +1,6 @@
 use crate::cli::ListArgs;
-use crate::color::{ColorConfig, ColorScheme};
+use crate::color::{self, ColorConfig, ColorScheme};
+use crate::config;
 use crate::error::{Error, Result};
 use crate::git::{self, UnpushedCommits, WorktreeInfo, WorktreeStatus};
 use crate::output::Output;
@@ -20,6 +21,11 @@ pub(crate) fn run(args: ListArgs, color: ColorConfig) -> Result<()> {
 
     if !git::is_inside_repo() {
         return Err(Error::NotInGitRepo);
+    }
+
+    let repo_root = git::repository_root()?;
+    if let Ok(Some(config)) = config::load(&repo_root) {
+        color::set_cli_theme(&config.ui.colors);
     }
 
     let worktrees = git::list_worktrees()?;

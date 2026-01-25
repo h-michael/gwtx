@@ -1,5 +1,5 @@
 use crate::cli::RemoveArgs;
-use crate::color::ColorConfig;
+use crate::color::{self, ColorConfig};
 use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::error::{Error, Result};
 use crate::git::{self, WorktreeInfo};
@@ -23,6 +23,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
 
     let config =
         load_config_with_trust_check(&repo_root, &main_worktree_path, true, TrustHint::None)?;
+    color::set_cli_theme(&config.ui.colors);
 
     let worktrees = git::list_worktrees()?;
 
