@@ -4,8 +4,9 @@ use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::error::{Error, Result};
 use crate::git::{self, WorktreeInfo};
 use crate::hook::{self, HookEnv};
+use crate::interactive::{SafetyWarning, run_remove_confirmation, run_remove_selection};
 use crate::output::Output;
-use crate::prompt::{self, SafetyWarning};
+use crate::prompt;
 
 use std::path::PathBuf;
 
@@ -53,7 +54,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
                 display_warning(&output, warning);
             }
         } else if prompt::is_interactive() {
-            if !prompt::prompt_remove_confirmation(&warnings, color)? {
+            if !run_remove_confirmation(&warnings)? {
                 return Err(Error::Aborted);
             }
         } else {
@@ -145,7 +146,7 @@ fn select_worktrees_interactively(worktrees: &[WorktreeInfo]) -> Result<Vec<Path
     // Clear screen before entering interactive mode
     prompt::clear_screen_interactive()?;
 
-    let paths = prompt::prompt_worktree_selection(worktrees)?;
+    let paths = run_remove_selection(worktrees)?;
     Ok(paths)
 }
 

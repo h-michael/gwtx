@@ -1,5 +1,5 @@
-use crate::config;
 use crate::error::{Error, Result};
+use crate::{config, git};
 
 use crossterm::ExecutableCommand;
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
@@ -15,14 +15,65 @@ use std::io::Write;
 use std::time::Duration;
 
 mod add;
+mod conflict;
+mod path;
+mod remove;
 mod select;
 mod worktree_list;
 
 pub(crate) use add::{AddInteractiveInput, WorktreeSummary, run_add_interactive};
-pub(crate) use select::{confirm, select_from_list};
-pub(crate) use worktree_list::{
-    STEP_CONFIRM, STEP_SELECT, SelectMode, WorktreeEntry, select_worktrees,
-};
+pub(crate) use conflict::{ConflictChoice, prompt_conflict};
+pub(crate) use path::run_path_interactive;
+pub(crate) use remove::{SafetyWarning, run_remove_confirmation, run_remove_selection};
+
+// Shared step name constants for breadcrumb navigation
+const STEP_ACTION: &str = "Choose action";
+const STEP_BRANCH: &str = "Select branch";
+const STEP_BASE: &str = "Branch from";
+const STEP_COMMIT: &str = "Commit hash";
+const STEP_BRANCH_NAME: &str = "Branch name";
+const STEP_WORKTREE_PATH: &str = "Worktree path";
+const STEP_SELECT_WORKTREE: &str = "Select worktrees";
+const STEP_CONFIRM: &str = "Confirm";
+const STEP_CONFLICT: &str = "Resolve conflict";
+
+// Shared layout constants
+const HEADER_HEIGHT: u16 = 2;
+const BODY_PADDING: u16 = 1;
+
+/// Renders a breadcrumb line for the header.
+///
+/// Format: `{command_name}: crumb1 > crumb2 > crumb3`
+/// The last crumb is highlighted with accent color.
+fn render_breadcrumb_line<'a>(
+    command_name: &'a str,
+    breadcrumbs: &[&'a str],
+    theme: UiTheme,
+) -> ratatui::text::Line<'a> {
+    use ratatui::text::{Line, Span};
+
+    let mut spans = vec![Span::styled(
+        format!("{command_name}: "),
+        theme.header_style(),
+    )];
+    for (i, crumb) in breadcrumbs.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" > ", theme.muted_style()));
+        }
+        if i == breadcrumbs.len() - 1 {
+            spans.push(Span::styled(*crumb, theme.accent_style()));
+        } else {
+            spans.push(Span::styled(*crumb, theme.header_style()));
+        }
+    }
+    Line::from(spans)
+}
+
+fn resolve_ui_theme() -> Result<UiTheme> {
+    let repo_root = git::repository_root()?;
+    let config = config::load(&repo_root)?.unwrap_or_default();
+    Ok(UiTheme::from_colors(&config.ui.colors))
+}
 
 /// Reads the next key event from the terminal, filtering out non-key events.
 ///

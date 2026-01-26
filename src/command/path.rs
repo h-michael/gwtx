@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
-use crate::{git, prompt};
+use crate::git;
+use crate::interactive::run_path_interactive;
 
 pub(crate) fn run() -> Result<()> {
     if !git::is_inside_repo() {
@@ -7,7 +8,7 @@ pub(crate) fn run() -> Result<()> {
     }
 
     let worktrees = git::list_worktrees()?;
-    let selected = prompt::prompt_worktree_single_selection(&worktrees)?;
+    let selected = run_path_interactive(&worktrees)?;
     println!("{}", selected.display());
     Ok(())
 }

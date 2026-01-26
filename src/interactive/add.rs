@@ -14,7 +14,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{fs, io};
 
-use super::{UiTheme, read_key_event, with_terminal};
+use super::{
+    BODY_PADDING, HEADER_HEIGHT, STEP_ACTION, STEP_BASE, STEP_BRANCH, STEP_BRANCH_NAME,
+    STEP_COMMIT, STEP_CONFIRM, STEP_WORKTREE_PATH, UiTheme, read_key_event, with_terminal,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct BranchChoice {
@@ -55,14 +58,6 @@ pub(crate) fn run_add_interactive(input: AddInteractiveInput) -> Result<AddInter
     with_terminal(|terminal| run_add_ui(terminal, input))
 }
 
-const STEP_MODE: &str = "Choose action";
-const STEP_BRANCH: &str = "Pick branch";
-const STEP_BASE: &str = "Branch from";
-const STEP_COMMIT: &str = "Commit hash";
-const STEP_NAME: &str = "Branch name";
-const STEP_PATH: &str = "Worktree path";
-const STEP_CONFIRM: &str = "Confirm";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AddStep {
     ModeSelect,
@@ -93,7 +88,7 @@ enum NewBranchOrigin {
 }
 
 fn build_breadcrumb(state: &AddUiState) -> Vec<&'static str> {
-    let mut crumbs = vec![STEP_MODE];
+    let mut crumbs = vec![STEP_ACTION];
 
     match state.step {
         AddStep::ModeSelect => {}
@@ -115,7 +110,7 @@ fn build_breadcrumb(state: &AddUiState) -> Vec<&'static str> {
                 Some(NewBranchOrigin::Commit) => crumbs.push(STEP_COMMIT),
                 None => {}
             }
-            crumbs.push(STEP_NAME);
+            crumbs.push(STEP_BRANCH_NAME);
         }
         AddStep::Path => {
             crumbs.push(STEP_BRANCH);
@@ -125,9 +120,9 @@ fn build_breadcrumb(state: &AddUiState) -> Vec<&'static str> {
                     Some(NewBranchOrigin::Commit) => crumbs.push(STEP_COMMIT),
                     None => {}
                 }
-                crumbs.push(STEP_NAME);
+                crumbs.push(STEP_BRANCH_NAME);
             }
-            crumbs.push(STEP_PATH);
+            crumbs.push(STEP_WORKTREE_PATH);
         }
         AddStep::Confirm => {
             crumbs.push(STEP_BRANCH);
@@ -137,9 +132,9 @@ fn build_breadcrumb(state: &AddUiState) -> Vec<&'static str> {
                     Some(NewBranchOrigin::Commit) => crumbs.push(STEP_COMMIT),
                     None => {}
                 }
-                crumbs.push(STEP_NAME);
+                crumbs.push(STEP_BRANCH_NAME);
             }
-            crumbs.push(STEP_PATH);
+            crumbs.push(STEP_WORKTREE_PATH);
             crumbs.push(STEP_CONFIRM);
         }
     }
@@ -878,15 +873,13 @@ fn draw_add_ui(
     input: &AddInteractiveInput,
 ) {
     let size = frame.area();
-    let header_height = 2;
-    let body_padding = 1;
-    let body_height = size.height.saturating_sub(header_height + body_padding);
+    let body_height = size.height.saturating_sub(HEADER_HEIGHT + BODY_PADDING);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(header_height),
-            Constraint::Length(body_padding),
+            Constraint::Length(HEADER_HEIGHT),
+            Constraint::Length(BODY_PADDING),
             Constraint::Length(body_height),
         ])
         .split(size);
@@ -994,7 +987,7 @@ fn draw_mode_select(
                 .borders(Borders::ALL)
                 .border_style(input.theme.border_style())
                 .padding(Padding::new(1, 1, 0, 0))
-                .title(Span::styled(STEP_MODE, input.theme.title_style())),
+                .title(Span::styled(STEP_ACTION, input.theme.title_style())),
         )
         .style(input.theme.text_style());
 
@@ -1214,7 +1207,7 @@ fn draw_branch_name_step(
         .borders(Borders::ALL)
         .border_style(input.theme.border_style())
         .padding(Padding::new(1, 1, 0, 0))
-        .title(Span::styled(STEP_NAME, input.theme.title_style()));
+        .title(Span::styled(STEP_BRANCH_NAME, input.theme.title_style()));
 
     let mut lines = Vec::new();
     lines.push(Line::from(vec![
@@ -1246,7 +1239,7 @@ fn draw_path_step(
         .borders(Borders::ALL)
         .border_style(input.theme.border_style())
         .padding(Padding::new(1, 1, 0, 0))
-        .title(Span::styled(STEP_PATH, input.theme.title_style()));
+        .title(Span::styled(STEP_WORKTREE_PATH, input.theme.title_style()));
 
     let path_value = state.path_input.value.clone();
     let resolved = resolved_worktree_path(input, &path_value);
@@ -2728,6 +2721,25 @@ mod tests {
         apply_path_suggestion(&mut state, &input);
 
         assert_eq!(state.path_input.value, "worktrees/feature-test");
+    }
+
+    #[test]
+    fn test_apply_path_suggestion_new_branch_created_from_base() {
+        // Scenario: base branch is "foo", and user creates new branch "foo-bar"
+        // Path suggestion should use the new branch name, not the base branch
+        let mut input = create_test_input();
+        input.suggest_path = Some(Arc::new(|branch: &str| {
+            Some(format!("worktrees/{}", branch))
+        }));
+        let mut state = AddUiState::new(&input);
+        state.path_input = TextInputState::new(String::new());
+        state.base_branch = Some("foo".to_string()); // Base branch
+        state.branch_name_input = TextInputState::new("foo-bar".to_string()); // New branch name
+
+        apply_path_suggestion(&mut state, &input);
+
+        // Should use the new branch name "foo-bar", not base branch "foo"
+        assert_eq!(state.path_input.value, "worktrees/foo-bar");
     }
 
     // update_branch_rows tests

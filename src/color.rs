@@ -45,7 +45,6 @@ impl ColorConfig {
     }
 
     /// Returns whether colors should be used.
-    #[allow(dead_code)]
     pub fn is_enabled(self) -> bool {
         self.enabled
     }
