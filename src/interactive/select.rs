@@ -7,10 +7,14 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap}
 
 use std::time::Duration;
 
-use super::{UiTheme, read_key_event, truncate_text_for_width, with_terminal};
+use super::{
+    BODY_PADDING, HEADER_HEIGHT, UiTheme, read_key_event, render_breadcrumb_line,
+    truncate_text_for_width, with_terminal,
+};
 
 pub(crate) fn select_from_list(
-    title: &str,
+    command_name: &str,
+    breadcrumbs: &[&str],
     message: Option<&str>,
     items: &[String],
     theme: UiTheme,
@@ -21,7 +25,9 @@ pub(crate) fn select_from_list(
         });
     }
 
-    with_terminal(|terminal| run_simple_select(terminal, title, message, items, theme))
+    with_terminal(|terminal| {
+        run_simple_select(terminal, command_name, breadcrumbs, message, items, theme)
+    })
 }
 
 pub(crate) fn confirm(
@@ -63,7 +69,8 @@ impl SimpleSelectState {
 
 fn run_simple_select(
     terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<Box<dyn std::io::Write>>>,
-    title: &str,
+    command_name: &str,
+    breadcrumbs: &[&str],
     message: Option<&str>,
     items: &[String],
     theme: UiTheme,
@@ -72,7 +79,17 @@ fn run_simple_select(
 
     loop {
         terminal
-            .draw(|frame| draw_simple_select(frame, &state, title, message, items, theme))
+            .draw(|frame| {
+                draw_simple_select(
+                    frame,
+                    &state,
+                    command_name,
+                    breadcrumbs,
+                    message,
+                    items,
+                    theme,
+                )
+            })
             .map_err(|e| Error::Selector {
                 message: format!("Failed to draw UI: {e}"),
             })?;
@@ -102,27 +119,26 @@ fn run_simple_select(
 fn draw_simple_select(
     frame: &mut ratatui::Frame<'_>,
     state: &SimpleSelectState,
-    title: &str,
+    command_name: &str,
+    breadcrumbs: &[&str],
     message: Option<&str>,
     items: &[String],
     theme: UiTheme,
 ) {
     let size = frame.area();
-    let header_height = 2;
-    let body_padding = 1;
-    let body_height = size.height.saturating_sub(header_height + body_padding);
+    let body_height = size.height.saturating_sub(HEADER_HEIGHT + BODY_PADDING);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(header_height),
-            Constraint::Length(body_padding),
+            Constraint::Length(HEADER_HEIGHT),
+            Constraint::Length(BODY_PADDING),
             Constraint::Length(body_height),
         ])
         .split(size);
 
     let key_hints = "[Enter] select  [Esc] cancel  [↑/↓] move";
-    let title_line = Line::from(Span::styled(title, theme.header_style()));
+    let title_line = render_breadcrumb_line(command_name, breadcrumbs, theme);
     let key_hints_line = Line::from(Span::styled(key_hints, theme.footer_style()));
     let header = Paragraph::new(vec![title_line, key_hints_line]);
     frame.render_widget(header, chunks[0]);
@@ -143,6 +159,7 @@ fn draw_simple_select(
         frame.render_widget(message, area);
     }
 
+    let box_title = breadcrumbs.last().copied().unwrap_or("Options");
     let items = items
         .iter()
         .enumerate()
@@ -166,7 +183,7 @@ fn draw_simple_select(
                 .borders(Borders::ALL)
                 .border_style(theme.border_style())
                 .padding(Padding::new(1, 1, 0, 0))
-                .title(Span::styled("Options", theme.title_style())),
+                .title(Span::styled(box_title, theme.title_style())),
         )
         .style(theme.text_style());
     frame.render_widget(list, list_area);
@@ -213,36 +230,19 @@ fn draw_confirm_dialog(
     theme: UiTheme,
 ) {
     let size = frame.area();
-    let header_height = 2;
-    let body_padding = 1;
-    let body_height = size.height.saturating_sub(header_height + body_padding);
+    let body_height = size.height.saturating_sub(HEADER_HEIGHT + BODY_PADDING);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(header_height),
-            Constraint::Length(body_padding),
+            Constraint::Length(HEADER_HEIGHT),
+            Constraint::Length(BODY_PADDING),
             Constraint::Length(body_height),
         ])
         .split(size);
 
     let key_hints = "[Enter] yes  [N] no  [Esc] cancel";
-
-    let mut title_spans = vec![Span::styled(
-        format!("{command_name}: "),
-        theme.header_style(),
-    )];
-    for (i, crumb) in breadcrumbs.iter().enumerate() {
-        if i > 0 {
-            title_spans.push(Span::styled(" > ", theme.muted_style()));
-        }
-        if i == breadcrumbs.len() - 1 {
-            title_spans.push(Span::styled(*crumb, theme.accent_style()));
-        } else {
-            title_spans.push(Span::styled(*crumb, theme.header_style()));
-        }
-    }
-    let title_line = Line::from(title_spans);
+    let title_line = render_breadcrumb_line(command_name, breadcrumbs, theme);
     let key_hints_line = Line::from(Span::styled(key_hints, theme.footer_style()));
     let header = Paragraph::new(vec![title_line, key_hints_line]);
     frame.render_widget(header, chunks[0]);
@@ -338,7 +338,7 @@ mod tests {
 
         terminal
             .draw(|frame| {
-                draw_simple_select(frame, &state, "Test Title", None, &items, theme);
+                draw_simple_select(frame, &state, "Test", &["Select"], None, &items, theme);
             })
             .unwrap();
 
@@ -371,7 +371,8 @@ mod tests {
                 draw_simple_select(
                     frame,
                     &state,
-                    "Title",
+                    "Test",
+                    &["Select"],
                     Some("Select an option"),
                     &items,
                     theme,

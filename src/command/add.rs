@@ -6,9 +6,9 @@ use crate::error::{Error, Result};
 use crate::git;
 use crate::hook::{self, HookEnv};
 use crate::interactive;
+use crate::interactive::ConflictChoice;
 use crate::operation::{self, ConflictAction, check_conflict, create_directory, resolve_conflict};
 use crate::output::Output;
-use crate::prompt::{self, ConflictChoice};
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -416,7 +416,7 @@ fn process_operation(
             mode
         } else {
             // Prompt user
-            let choice: ConflictChoice = prompt::prompt_conflict_with_all(target)?;
+            let choice: ConflictChoice = interactive::prompt_conflict(target)?;
             if choice.apply_to_all {
                 *override_mode = Some(choice.mode);
             }

@@ -1,4 +1,5 @@
 use crate::error::{Error, Result};
+use crate::git::WorktreeInfo;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use indexmap::IndexSet;
@@ -13,10 +14,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::{UiTheme, read_key_event, truncate_text_for_width, with_terminal};
-
-pub(crate) const STEP_SELECT: &str = "Select worktrees";
-pub(crate) const STEP_CONFIRM: &str = "Confirm";
+use super::{
+    BODY_PADDING, HEADER_HEIGHT, STEP_SELECT_WORKTREE, UiTheme, read_key_event,
+    render_breadcrumb_line, truncate_text_for_width, with_terminal,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorktreeEntry {
@@ -28,6 +29,49 @@ pub(crate) struct WorktreeEntry {
 pub(crate) enum SelectMode {
     Single,
     Multi,
+}
+
+/// Builds a list of worktree entries for display.
+///
+/// # Arguments
+/// * `worktrees` - List of worktree information from git
+/// * `include_main` - If true, includes the main worktree; if false, filters it out
+///
+/// # Display format
+/// Each entry shows: `{path} ({branch})[main][locked]`
+/// - `[main]` indicator only shown when `include_main` is true
+/// - `[locked]` indicator shown for locked worktrees
+pub(crate) fn build_worktree_entries(
+    worktrees: &[WorktreeInfo],
+    include_main: bool,
+) -> Vec<WorktreeEntry> {
+    worktrees
+        .iter()
+        .filter(|wt| include_main || !wt.is_main)
+        .map(|wt| {
+            let branch_info = wt
+                .branch
+                .as_ref()
+                .and_then(|b| b.strip_prefix("refs/heads/"))
+                .unwrap_or("(detached)");
+            let main_info = if include_main && wt.is_main {
+                " [main]"
+            } else {
+                ""
+            };
+            let lock_info = if wt.is_locked { " [locked]" } else { "" };
+            WorktreeEntry {
+                display: format!(
+                    "{} ({}){}{}",
+                    wt.path.display(),
+                    branch_info,
+                    main_info,
+                    lock_info
+                ),
+                path: wt.path.clone(),
+            }
+        })
+        .collect()
 }
 
 pub(crate) fn select_worktrees(
@@ -236,14 +280,12 @@ fn draw_worktree_list(
     theme: UiTheme,
 ) {
     let size = frame.area();
-    let header_height = 2;
-    let body_padding = 1;
-    let body_height = size.height.saturating_sub(header_height + body_padding);
+    let body_height = size.height.saturating_sub(HEADER_HEIGHT + BODY_PADDING);
 
-    let header = Rect::new(size.x, size.y, size.width, header_height);
+    let header = Rect::new(size.x, size.y, size.width, HEADER_HEIGHT);
     let body = Rect::new(
         size.x,
-        size.y + header_height + body_padding,
+        size.y + HEADER_HEIGHT + BODY_PADDING,
         size.width,
         body_height,
     );
@@ -253,22 +295,7 @@ fn draw_worktree_list(
         SelectMode::Multi => "[Enter] confirm  [Esc] cancel  [Space] toggle  [Ctrl+U] clear",
     };
 
-    let mut title_spans = vec![Span::styled(
-        format!("{command_name}: "),
-        theme.header_style(),
-    )];
-    for (i, crumb) in breadcrumbs.iter().enumerate() {
-        if i > 0 {
-            title_spans.push(Span::styled(" > ", theme.muted_style()));
-        }
-        if i == breadcrumbs.len() - 1 {
-            title_spans.push(Span::styled(*crumb, theme.accent_style()));
-        } else {
-            title_spans.push(Span::styled(*crumb, theme.header_style()));
-        }
-    }
-
-    let title_line = Line::from(title_spans);
+    let title_line = render_breadcrumb_line(command_name, breadcrumbs, theme);
     let key_hints_line = Line::from(Span::styled(key_hints, theme.footer_style()));
     let header_block = Paragraph::new(vec![title_line, key_hints_line]);
     frame.render_widget(header_block, header);
@@ -330,7 +357,7 @@ fn draw_worktree_list(
                 .borders(Borders::ALL)
                 .border_style(theme.border_style())
                 .padding(Padding::new(1, 1, 0, 0))
-                .title(Span::styled(STEP_SELECT, theme.title_style())),
+                .title(Span::styled(STEP_SELECT_WORKTREE, theme.title_style())),
         )
         .style(theme.text_style());
     frame.render_widget(list, left_chunks[1]);
@@ -376,6 +403,200 @@ fn finalize_selection(state: &WorktreeListState, mode: SelectMode) -> Result<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // build_worktree_entries tests
+
+    #[test]
+    fn test_build_worktree_entries_includes_main() {
+        let worktrees = vec![WorktreeInfo {
+            path: PathBuf::from("/repo/.git"),
+            head: "abc123".to_string(),
+            branch: Some("refs/heads/main".to_string()),
+            is_main: true,
+            is_locked: false,
+        }];
+
+        let result = build_worktree_entries(&worktrees, true);
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].display.contains("[main]"));
+    }
+
+    #[test]
+    fn test_build_worktree_entries_filters_main() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-1"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature-1".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+        ];
+
+        let result = build_worktree_entries(&worktrees, false);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path, PathBuf::from("/repo/feature-1"));
+    }
+
+    #[test]
+    fn test_build_worktree_entries_empty_list() {
+        let worktrees: Vec<WorktreeInfo> = vec![];
+
+        let result = build_worktree_entries(&worktrees, true);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_build_worktree_entries_only_main_returns_empty_when_filtered() {
+        let worktrees = vec![WorktreeInfo {
+            path: PathBuf::from("/repo/.git"),
+            head: "abc123".to_string(),
+            branch: Some("refs/heads/main".to_string()),
+            is_main: true,
+            is_locked: false,
+        }];
+
+        let result = build_worktree_entries(&worktrees, false);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_build_worktree_entries_preserves_order() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-1"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature-1".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-2"),
+                head: "ghi789".to_string(),
+                branch: Some("refs/heads/feature-2".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+        ];
+
+        let result = build_worktree_entries(&worktrees, false);
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].path, PathBuf::from("/repo/feature-1"));
+        assert_eq!(result[1].path, PathBuf::from("/repo/feature-2"));
+    }
+
+    #[test]
+    fn test_build_worktree_entries_multiple_with_main_included() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-branch"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/locked-branch"),
+                head: "ghi789".to_string(),
+                branch: Some("refs/heads/locked".to_string()),
+                is_main: false,
+                is_locked: true,
+            },
+        ];
+
+        let result = build_worktree_entries(&worktrees, true);
+
+        assert_eq!(result.len(), 3);
+        assert!(result[0].display.contains("[main]"));
+        assert!(!result[1].display.contains("[main]"));
+        assert!(!result[1].display.contains("[locked]"));
+        assert!(result[2].display.contains("[locked]"));
+    }
+
+    #[test]
+    fn test_build_worktree_entries_formats_display() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-1"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature-1".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-2"),
+                head: "ghi789".to_string(),
+                branch: None,
+                is_main: false,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-3"),
+                head: "jkl012".to_string(),
+                branch: Some("refs/heads/feature-3".to_string()),
+                is_main: false,
+                is_locked: true,
+            },
+        ];
+
+        let result = build_worktree_entries(&worktrees, false);
+
+        assert_eq!(result.len(), 3);
+        assert!(result[0].display.contains("feature-1"));
+        assert!(result[1].display.contains("(detached)"));
+        assert!(result[2].display.contains("[locked]"));
+    }
+
+    #[test]
+    fn test_build_worktree_entries_detached_head() {
+        let worktrees = vec![WorktreeInfo {
+            path: PathBuf::from("/repo/detached"),
+            head: "abc123".to_string(),
+            branch: None,
+            is_main: false,
+            is_locked: false,
+        }];
+
+        let result = build_worktree_entries(&worktrees, true);
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].display.contains("(detached)"));
+    }
+
+    // WorktreeEntry and SelectMode tests
 
     fn create_test_entries() -> Vec<WorktreeEntry> {
         vec![
@@ -671,7 +892,7 @@ mod tests {
                     &state,
                     SelectMode::Single,
                     "test",
-                    &[STEP_SELECT],
+                    &[STEP_SELECT_WORKTREE],
                     theme,
                 );
             })
@@ -697,7 +918,7 @@ mod tests {
                     &state,
                     SelectMode::Multi,
                     "test",
-                    &[STEP_SELECT],
+                    &[STEP_SELECT_WORKTREE],
                     theme,
                 );
             })
@@ -722,7 +943,7 @@ mod tests {
                     &state,
                     SelectMode::Single,
                     "test",
-                    &[STEP_SELECT],
+                    &[STEP_SELECT_WORKTREE],
                     theme,
                 );
             })
@@ -760,7 +981,7 @@ mod tests {
                     &state,
                     SelectMode::Single,
                     "test",
-                    &[STEP_SELECT],
+                    &[STEP_SELECT_WORKTREE],
                     theme,
                 );
             })
@@ -785,7 +1006,7 @@ mod tests {
                     &state,
                     SelectMode::Single,
                     "test",
-                    &[STEP_SELECT],
+                    &[STEP_SELECT_WORKTREE],
                     theme,
                 );
             })
