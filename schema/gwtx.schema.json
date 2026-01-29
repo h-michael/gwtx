@@ -4,14 +4,14 @@
   "description": "Configuration file for gwtx (git worktree extra)",
   "type": "object",
   "properties": {
+    "auto_cd": {
+      "$ref": "#/$defs/AutoCd"
+    },
     "copy": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/CopyEntry"
       }
-    },
-    "defaults": {
-      "$ref": "#/$defs/Defaults"
     },
     "hooks": {
       "$ref": "#/$defs/Hooks"
@@ -28,6 +28,16 @@
         "$ref": "#/$defs/MkdirEntry"
       }
     },
+    "on_conflict": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OnConflict"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "ui": {
       "$ref": "#/$defs/Ui"
     },
@@ -37,6 +47,46 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "AfterRemove": {
+      "title": "After Remove",
+      "description": "Where to cd after removing the current worktree",
+      "oneOf": [
+        {
+          "description": "cd to the main worktree automatically",
+          "type": "string",
+          "const": "main"
+        },
+        {
+          "description": "Show interactive selection to choose a worktree",
+          "type": "string",
+          "const": "select"
+        }
+      ]
+    },
+    "AutoCd": {
+      "title": "Auto Cd",
+      "description": "Automatic directory change after worktree operations",
+      "type": "object",
+      "properties": {
+        "after_add": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "after_remove": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AfterRemove"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "CopyEntry": {
       "title": "Copy Entry",
       "description": "File/directory copy operation",
@@ -66,24 +116,6 @@
           "type": [
             "string",
             "null"
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
-    "Defaults": {
-      "title": "Defaults",
-      "description": "Global defaults for all operations",
-      "type": "object",
-      "properties": {
-        "on_conflict": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/OnConflict"
-            },
-            {
-              "type": "null"
-            }
           ]
         }
       },

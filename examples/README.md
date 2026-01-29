@@ -38,8 +38,12 @@ All examples use YAML format with JSON Schema validation support. The basic stru
 
 ```yaml
 # Global options (optional)
-defaults:
-  on_conflict: backup  # abort, skip, overwrite, backup
+on_conflict: backup  # abort, skip, overwrite, backup
+
+# Auto cd after operations (optional, requires shell integration)
+auto_cd:
+  after_add: true     # cd to new worktree (default: true)
+  after_remove: main  # cd after removing current worktree (default: main)
 
 # Worktree path template (optional)
 worktree:

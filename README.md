@@ -93,7 +93,11 @@ gwtx remove ../feature-branch
 # Shorthand alias
 gwtx rm ../feature-branch
 
+# Remove current worktree (the one you're in)
+gwtx remove --current
+
 # Interactive mode - select worktrees to remove
+# Shows [current] marker for the worktree you're in
 gwtx remove --interactive
 
 # Preview what would be removed
@@ -113,17 +117,17 @@ By default, `gwtx remove` warns about:
 
 Use `--force` to bypass all checks and confirmation prompts.
 
-### Switching to selected worktree
+### Changing to selected worktree
 
 ```bash
-# Interactively select and switch to a worktree
-gwtx switch
+# Interactively select and cd to a worktree
+gwtx cd
 
 # Or get worktree path for scripting (works without shell integration)
 cd "$(gwtx path)"
 ```
 
-**`gwtx switch`**: **Requires shell integration** (`gwtx init` - see [Shell Integration](#shell-integration) section). Displays an interactive fuzzy finder (on Unix) or selection menu (on Windows) and automatically changes to the selected worktree. If shell integration is not enabled, the command will display a helpful error message with setup instructions.
+**`gwtx cd`**: **Requires shell integration** (`gwtx init` - see [Shell Integration](#shell-integration) section). Displays an interactive fuzzy finder (on Unix) or selection menu (on Windows) and automatically changes to the selected worktree. If shell integration is not enabled, the command will display a helpful error message with setup instructions.
 
 **`gwtx path`**: Prints the selected worktree path to stdout. Works without shell integration. Useful for scripting or as a fallback.
 
@@ -199,7 +203,9 @@ eval (gwtx init elvish | slurp)
 
 Shell integration provides:
 - **Shell completions** for commands and options
-- **`gwtx switch` command** to interactively change directory to selected worktree (only available with shell integration)
+- **`gwtx cd` command** to interactively change directory to selected worktree (only available with shell integration)
+- **Auto cd after add** - Automatically `cd` to newly created worktree (configurable via `auto_cd.after_add`)
+- **Auto cd after remove** - Automatically `cd` when current worktree is removed (configurable via `auto_cd.after_remove`)
 - **Automatic trust warnings** when entering directories with untrusted hooks
 
 ## Configuration
@@ -213,15 +219,13 @@ Create `.gwtx.yaml` in your repository root. See [examples/](examples/) for vari
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
 
-defaults:
-  on_conflict: backup
+on_conflict: backup
 ```
 
 ### Basic configuration
 
 ```yaml
-defaults:
-  on_conflict: backup  # abort, skip, overwrite, backup
+on_conflict: backup  # abort, skip, overwrite, backup
 
 mkdir:
   - path: build
@@ -339,7 +343,21 @@ When a target file already exists, gwtx can:
 - `overwrite` - Replace the existing file
 - `backup` - Rename existing file to `.bak` and proceed
 
-Set globally in `defaults`, per-operation, or via `--on-conflict` flag.
+Set globally with `on_conflict`, per-operation, or via `--on-conflict` flag.
+
+### Auto cd (shell integration)
+
+Automatically change directory after worktree operations. **Requires shell integration.**
+
+```yaml
+auto_cd:
+  after_add: true     # cd to new worktree after creation (default: true)
+  after_remove: main  # cd after removing current worktree (default: main)
+```
+
+**`after_remove` options:**
+- `main` - cd to main worktree
+- `select` - Show interactive selection
 
 ### Other options
 
@@ -392,6 +410,7 @@ gwtx rm [OPTIONS] [PATHS]...
 
 gwtx Options:
   -i, --interactive         Select worktrees interactively
+  -c, --current             Remove current worktree
       --dry-run             Preview without executing
       --hook-shell <SHELL>  Windows only: hook shell
 
