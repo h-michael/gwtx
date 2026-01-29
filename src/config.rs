@@ -114,8 +114,9 @@ fn validate_global_config(raw: &RawConfig) -> Result<()> {
     description = "Configuration file for gwtx (git worktree extra)"
 )]
 pub(crate) struct RawConfig {
-    #[serde(default, rename = "defaults")]
-    defaults: RawDefaults,
+    on_conflict: Option<OnConflict>,
+    #[serde(default)]
+    auto_cd: RawAutoCd,
     #[serde(default)]
     worktree: RawWorktree,
     #[serde(default)]
@@ -133,12 +134,13 @@ pub(crate) struct RawConfig {
 #[derive(Debug, Deserialize, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(
-    rename = "Defaults",
-    title = "Defaults",
-    description = "Global defaults for all operations"
+    rename = "AutoCd",
+    title = "Auto Cd",
+    description = "Automatic directory change after worktree operations"
 )]
-struct RawDefaults {
-    on_conflict: Option<OnConflict>,
+struct RawAutoCd {
+    after_add: Option<bool>,
+    after_remove: Option<AfterRemove>,
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
@@ -308,7 +310,8 @@ struct RawCopy {
 /// Root configuration from .gwtx.yaml.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Config {
-    pub defaults: Defaults,
+    pub on_conflict: Option<OnConflict>,
+    pub auto_cd: AutoCd,
     pub worktree: Worktree,
     pub ui: Ui,
     pub hooks: Hooks,
@@ -322,8 +325,16 @@ pub(crate) fn merge_with_global(mut repo: Config, global: Option<&Config>) -> Co
         return repo;
     };
 
-    if repo.defaults.on_conflict.is_none() {
-        repo.defaults.on_conflict = global.defaults.on_conflict;
+    if repo.on_conflict.is_none() {
+        repo.on_conflict = global.on_conflict;
+    }
+
+    // auto_cd: use global values if repo values are not set
+    if repo.auto_cd.after_add.is_none() {
+        repo.auto_cd.after_add = global.auto_cd.after_add;
+    }
+    if repo.auto_cd.after_remove.is_none() {
+        repo.auto_cd.after_remove = global.auto_cd.after_remove;
     }
 
     if repo.worktree.path_template.is_none() {
@@ -509,8 +520,10 @@ impl TryFrom<RawConfig> for Config {
         }
 
         Ok(Config {
-            defaults: Defaults {
-                on_conflict: raw.defaults.on_conflict,
+            on_conflict: raw.on_conflict,
+            auto_cd: AutoCd {
+                after_add: raw.auto_cd.after_add,
+                after_remove: raw.auto_cd.after_remove,
             },
             worktree: Worktree {
                 path_template: raw.worktree.path_template,
@@ -558,10 +571,23 @@ fn validate_path(path: &Path) -> Option<String> {
     None
 }
 
-/// Global options.
+/// Automatic directory change configuration.
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Defaults {
-    pub on_conflict: Option<OnConflict>,
+pub(crate) struct AutoCd {
+    pub after_add: Option<bool>,
+    pub after_remove: Option<AfterRemove>,
+}
+
+impl AutoCd {
+    /// Get effective after_add value (default: true)
+    pub fn after_add(&self) -> bool {
+        self.after_add.unwrap_or(true)
+    }
+
+    /// Get effective after_remove value (default: main)
+    pub fn after_remove(&self) -> AfterRemove {
+        self.after_remove.unwrap_or(AfterRemove::Main)
+    }
 }
 
 /// Worktree path generation configuration.
@@ -1052,6 +1078,20 @@ pub(crate) enum OnConflict {
     Backup,
 }
 
+/// Behavior after removing a worktree when the current directory is removed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[schemars(
+    title = "After Remove",
+    description = "Where to cd after removing the current worktree"
+)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum AfterRemove {
+    /// cd to the main worktree automatically
+    Main,
+    /// Show interactive selection to choose a worktree
+    Select,
+}
+
 /// Snapshot of configuration for trust verification.
 ///
 /// Captures all configuration settings at the time of trust to detect when
@@ -1059,7 +1099,7 @@ pub(crate) enum OnConflict {
 /// tracking (not just hooks) for comprehensive security coverage.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct ConfigSnapshot {
-    pub defaults: Option<OnConflict>,
+    pub on_conflict: Option<OnConflict>,
     pub worktree: WorktreeSnapshot,
     pub hooks: Hooks,
     pub mkdir: Vec<MkdirSnapshot>,
@@ -1104,7 +1144,7 @@ impl ConfigSnapshot {
     /// Convert a Config into a ConfigSnapshot.
     pub(crate) fn from_config(config: &Config) -> Self {
         ConfigSnapshot {
-            defaults: config.defaults.on_conflict,
+            on_conflict: config.on_conflict,
             worktree: WorktreeSnapshot {
                 path_template: config.worktree.path_template.clone(),
                 branch_template: config.worktree.branch_template.clone(),
@@ -1164,8 +1204,7 @@ link:
     #[test]
     fn test_parse_full_config() {
         let yaml = r#"
-defaults:
-  on_conflict: skip
+on_conflict: skip
 
 mkdir:
   - path: "tmp/cache"
@@ -1187,7 +1226,7 @@ copy:
         let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
         let config = Config::try_from(raw).unwrap();
 
-        assert_eq!(config.defaults.on_conflict, Some(OnConflict::Skip));
+        assert_eq!(config.on_conflict, Some(OnConflict::Skip));
 
         assert_eq!(config.mkdir.len(), 1);
         assert_eq!(config.mkdir[0].path, PathBuf::from("tmp/cache"));

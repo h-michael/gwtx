@@ -60,13 +60,13 @@ fn main() -> ExitCode {
             let color_config = color::ColorConfig::new(color_choice);
             command::list(list_args, color_config)
         }
-        cli::Command::Path => {
+        cli::Command::Path(path_args) => {
             color::ColorConfig::new(clap::ColorChoice::Auto);
-            command::path()
+            command::path(path_args)
         }
-        cli::Command::Switch => {
+        cli::Command::Cd => {
             color::ColorConfig::new(clap::ColorChoice::Auto);
-            command::switch()
+            command::cd()
         }
         cli::Command::Config(config_args) => {
             color::ColorConfig::new(clap::ColorChoice::Auto);
@@ -117,10 +117,10 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
         Err(error::Error::TrustCheckFailed) => ExitCode::from(1),
-        Err(error::Error::SwitchRequiresShellIntegration) => {
+        Err(error::Error::CdRequiresShellIntegration) => {
             eprintln!(
                 "{}",
-                ColorScheme::error(&error::Error::SwitchRequiresShellIntegration.to_string())
+                ColorScheme::error(&error::Error::CdRequiresShellIntegration.to_string())
             );
             eprintln!("\nFor setup instructions, run: gwtx init --help");
             ExitCode::FAILURE

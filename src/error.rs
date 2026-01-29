@@ -61,8 +61,8 @@ pub(crate) enum Error {
     #[error("Interactive prompt required for {command}")]
     InteractiveRequired { command: &'static str },
 
-    #[error("gwtx switch requires shell integration")]
-    SwitchRequiresShellIntegration,
+    #[error("gwtx cd requires shell integration")]
+    CdRequiresShellIntegration,
 
     #[error("The main worktree cannot be removed.\n  Path: {}", .path.display())]
     CannotRemoveMainWorktree { path: PathBuf },
@@ -72,6 +72,9 @@ pub(crate) enum Error {
 
     #[error("No worktrees found")]
     NoWorktreesFound,
+
+    #[error("Current directory is not inside any worktree")]
+    NotInWorktree,
 
     #[error("Worktree has uncommitted changes: {}\n  Use --force to remove anyway.", .path.display())]
     WorktreeHasUncommittedChanges { path: PathBuf },

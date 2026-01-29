@@ -8,13 +8,60 @@ __gwtx_cmd() {
 }
 
 gwtx() {
-  if [ "${1:-}" = "switch" ] && [ $# -eq 1 ]; then
-    # Only use interactive path selection when "switch" has no additional arguments
+  if [ "${1:-}" = "cd" ] && [ $# -eq 1 ]; then
+    # Only use interactive path selection when "cd" has no additional arguments
     # If any arguments are provided (like --help), pass them to the command
     local dest
     dest=$(__gwtx_cmd path) || return $?
     if [ -n "$dest" ]; then
       builtin cd "$dest"
+    fi
+  elif [ "${1:-}" = "add" ]; then
+    local cd_to
+    cd_to=$(__gwtx_cmd config get auto_cd.after_add 2>/dev/null) || cd_to=""
+
+    # Capture output while displaying it
+    local tmpfile
+    tmpfile=$(mktemp)
+    __gwtx_cmd "$@" 2>&1 | tee "$tmpfile"
+    local cmd_status=${PIPESTATUS[0]}
+
+    if [ $cmd_status -eq 0 ] && [ "$cd_to" = "true" ]; then
+      local new_path
+      new_path=$(tail -1 "$tmpfile")
+      if [ -d "$new_path" ]; then
+        builtin cd "$new_path"
+      fi
+    fi
+
+    rm -f "$tmpfile"
+    return $cmd_status
+  elif [ "${1:-}" = "remove" ] || [ "${1:-}" = "rm" ]; then
+    local current_dir="$PWD"
+    # Get settings BEFORE removing (directory may not exist after)
+    local cd_to
+    cd_to=$(__gwtx_cmd config get auto_cd.after_remove 2>/dev/null) || cd_to=""
+    local main_path
+    main_path=$(__gwtx_cmd path --main 2>/dev/null) || main_path=""
+
+    __gwtx_cmd "$@" || return $?
+
+    # Check if current directory was removed
+    if [ ! -d "$current_dir" ]; then
+      case "$cd_to" in
+        main)
+          if [ -n "$main_path" ]; then
+            builtin cd "$main_path"
+          fi
+          ;;
+        select)
+          local dest
+          dest=$(__gwtx_cmd path) || return $?
+          if [ -n "$dest" ]; then
+            builtin cd "$dest"
+          fi
+          ;;
+      esac
     fi
   else
     __gwtx_cmd "$@"

@@ -11,7 +11,12 @@ pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
     match command {
         Some(ConfigCommand::Validate) => validate(),
         Some(ConfigCommand::Schema) => crate::command::schema(),
-        Some(ConfigCommand::New { global }) => new_config(global),
+        Some(ConfigCommand::New {
+            global,
+            path,
+            override_existing,
+        }) => new_config(global, path, override_existing),
+        Some(ConfigCommand::Get { key }) => get_config_value(&key),
         None => {
             // Show help when no subcommand is given
             use clap::CommandFactory;
@@ -39,11 +44,64 @@ fn validate() -> Result<()> {
     Ok(())
 }
 
-fn new_config(global: bool) -> Result<()> {
+/// Get a configuration value by key.
+fn get_config_value(key: &str) -> Result<()> {
+    if !git::is_inside_repo() {
+        return Err(Error::NotInGitRepo);
+    }
+
+    let repo_root = git::repository_root()?;
+    let cfg = config::load_merged(&repo_root)?;
+
+    match key {
+        "auto_cd.after_remove" => match cfg.auto_cd.after_remove() {
+            config::AfterRemove::Main => println!("main"),
+            config::AfterRemove::Select => println!("select"),
+        },
+        "auto_cd.after_add" => {
+            if cfg.auto_cd.after_add() {
+                println!("true");
+            } else {
+                println!("false");
+            }
+        }
+        "on_conflict" => {
+            if let Some(value) = cfg.on_conflict {
+                match value {
+                    config::OnConflict::Abort => println!("abort"),
+                    config::OnConflict::Skip => println!("skip"),
+                    config::OnConflict::Overwrite => println!("overwrite"),
+                    config::OnConflict::Backup => println!("backup"),
+                }
+            }
+        }
+        _ => {
+            return Err(Error::Internal(format!("Unknown config key: {}", key)));
+        }
+    }
+
+    Ok(())
+}
+
+fn new_config(
+    global: bool,
+    custom_path: Option<std::path::PathBuf>,
+    override_existing: bool,
+) -> Result<()> {
+    if let Some(path) = custom_path {
+        let template = if global {
+            global_config_template()
+        } else {
+            repo_config_template()
+        };
+        write_new_config(&path, &template, override_existing)?;
+        return Ok(());
+    }
+
     if global {
         let path = config::global_config_path().ok_or(Error::GlobalConfigDirNotFound)?;
         let template = global_config_template();
-        write_new_config(&path, &template)?;
+        write_new_config(&path, &template, override_existing)?;
         return Ok(());
     }
 
@@ -54,12 +112,12 @@ fn new_config(global: bool) -> Result<()> {
     let repo_root = git::repository_root()?;
     let path = repo_root.join(config::CONFIG_FILE_NAME);
     let template = repo_config_template();
-    write_new_config(&path, &template)?;
+    write_new_config(&path, &template, override_existing)?;
     Ok(())
 }
 
-fn write_new_config(path: &Path, template: &str) -> Result<()> {
-    if path.exists() {
+fn write_new_config(path: &Path, template: &str, override_existing: bool) -> Result<()> {
+    if path.exists() && !override_existing {
         return Err(Error::ConfigAlreadyExists {
             path: path.to_path_buf(),
         });
@@ -82,16 +140,51 @@ fn repo_config_template() -> String {
     format!(
         r#"# yaml-language-server: $schema={}
 
-# Minimal gwtx configuration
-# Copy this file to .gwtx.yaml in your repository root to get started.
+# gwtx configuration
+# See: https://github.com/h-michael/gwtx
 
-# This is the simplest possible configuration with no operations.
-# gwtx will create worktrees without any additional setup.
-# You can add operations as needed.
+# Conflict handling for file operations
+# on_conflict: backup  # abort, skip, overwrite, backup
 
-# Uncomment to set global conflict handling
-# defaults:
-#   on_conflict: backup  # abort, skip, overwrite, backup
+# Auto cd settings (requires shell integration)
+# auto_cd:
+#   after_add: true    # cd to new worktree after creation (default: true)
+#   after_remove: main # cd target after removing current worktree (default: main)
+
+# Worktree path/branch templates
+# worktree:
+#   path_template: "../worktrees/{{{{branch}}}}"
+#   branch_template: "{{{{commitish}}}}"
+
+# Create directories in new worktree
+# mkdir:
+#   - path: build
+#   - path: tmp
+#     description: Temporary files
+
+# Create symlinks from repo root to worktree
+# link:
+#   - source: .env.local
+#   - source: "fixtures/*"
+#     skip_tracked: true
+#     description: Link untracked test fixtures
+
+# Copy files from repo root to worktree
+# copy:
+#   - source: config.template.json
+#     target: config.json
+
+# Hooks (requires trust via `gwtx trust`)
+# hooks:
+#   pre_add:
+#     - command: echo "Creating {{{{worktree_name}}}}"
+#   post_add:
+#     - command: npm install
+#       description: Install dependencies
+#   pre_remove:
+#     - command: echo "Removing {{{{worktree_name}}}}"
+#   post_remove:
+#     - command: ./scripts/cleanup.sh
 "#,
         schema_url()
     )
@@ -105,16 +198,20 @@ fn global_config_template() -> String {
 # Global gwtx configuration
 # This file applies to all repositories and can be overridden by .gwtx.yaml.
 
-# Allowed keys: defaults, worktree, ui, hooks.hook_shell
+# Allowed keys: on_conflict, auto_cd, worktree, ui, hooks.hook_shell
 
-# defaults:
-#   on_conflict: backup  # abort, skip, overwrite, backup
+# on_conflict: backup  # abort, skip, overwrite, backup
+
+# Auto cd settings (requires shell integration)
+# auto_cd:
+#   after_add: true    # cd to new worktree after creation (default: true)
+#   after_remove: main # cd target after removing current worktree (default: main)
 
 # worktree:
-#   # path_template supports: {{branch}}, {{repository}}
-#   # branch_template supports: {{commitish}}, {{repository}}, {{strftime(...)}} (e.g., {{strftime(%Y%m%d)}})
-#   path_template: "../worktrees/{{repository}}-{{branch}}"
-#   branch_template: "review/{{commitish}}"
+#   # path_template supports: {{{{branch}}}}, {{{{repository}}}}
+#   # branch_template supports: {{{{commitish}}}}, {{{{repository}}}}, {{{{strftime(...)}}}} (e.g., {{{{strftime(%Y%m%d)}}}})
+#   path_template: "../worktrees/{{{{repository}}}}-{{{{branch}}}}"
+#   branch_template: "review/{{{{commitish}}}}"
 
 # ui:
 #   colors:
@@ -154,16 +251,20 @@ fn global_config_template() -> String {
 # Global gwtx configuration
 # This file applies to all repositories and can be overridden by .gwtx.yaml.
 
-# Allowed keys: defaults, worktree, ui
+# Allowed keys: on_conflict, auto_cd, worktree, ui
 
-# defaults:
-#   on_conflict: backup  # abort, skip, overwrite, backup
+# on_conflict: backup  # abort, skip, overwrite, backup
+
+# Auto cd settings (requires shell integration)
+# auto_cd:
+#   after_add: true    # cd to new worktree after creation (default: true)
+#   after_remove: main # cd target after removing current worktree (default: main)
 
 # worktree:
-#   # path_template supports: {{branch}}, {{repository}}
-#   # branch_template supports: {{commitish}}, {{repository}}, {{strftime(...)}} (e.g., {{strftime(%Y%m%d)}})
-#   path_template: "../worktrees/{{repository}}-{{branch}}"
-#   branch_template: "review/{{commitish}}"
+#   # path_template supports: {{{{branch}}}}, {{{{repository}}}}
+#   # branch_template supports: {{{{commitish}}}}, {{{{repository}}}}, {{{{strftime(...)}}}} (e.g., {{{{strftime(%Y%m%d)}}}})
+#   path_template: "../worktrees/{{{{repository}}}}-{{{{branch}}}}"
+#   branch_template: "review/{{{{commitish}}}}"
 
 # ui:
 #   colors:

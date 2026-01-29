@@ -8,12 +8,50 @@ function __gwtx_cmd
 end
 
 function gwtx
-  if test (count $argv) -eq 1; and test "$argv[1]" = "switch"
-    # Only use interactive path selection when "switch" has no additional arguments
+  if test (count $argv) -eq 1; and test "$argv[1]" = "cd"
+    # Only use interactive path selection when "cd" has no additional arguments
     # If any arguments are provided (like --help), pass them to the command
     set -l dest (__gwtx_cmd path)
     if test -n "$dest"
       builtin cd "$dest"
+    end
+  else if test (count $argv) -ge 1; and test "$argv[1]" = "add"
+    set -l cd_to (__gwtx_cmd config get auto_cd.after_add 2>/dev/null)
+
+    # Capture output while displaying it
+    set -l tmpfile (mktemp)
+    __gwtx_cmd $argv 2>&1 | tee $tmpfile
+    set -l cmd_status $pipestatus[1]
+
+    if test $cmd_status -eq 0; and test "$cd_to" = "true"
+      set -l new_path (tail -1 $tmpfile)
+      if test -d "$new_path"
+        builtin cd "$new_path"
+      end
+    end
+
+    rm -f $tmpfile
+    return $cmd_status
+  else if test (count $argv) -ge 1; and begin test "$argv[1]" = "remove"; or test "$argv[1]" = "rm"; end
+    set -l current_dir "$PWD"
+    set -l cd_to (__gwtx_cmd config get auto_cd.after_remove 2>/dev/null)
+    set -l main_path (__gwtx_cmd path --main 2>/dev/null)
+
+    __gwtx_cmd $argv
+    or return $status
+
+    if not test -d "$current_dir"
+      switch "$cd_to"
+        case main
+          if test -n "$main_path"
+            builtin cd "$main_path"
+          end
+        case select
+          set -l dest (__gwtx_cmd path)
+          if test -n "$dest"
+            builtin cd "$dest"
+          end
+      end
     end
   else
     __gwtx_cmd $argv

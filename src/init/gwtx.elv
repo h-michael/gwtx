@@ -6,12 +6,53 @@ if (has-external ::GWTX::) {
 fn __gwtx_cmd {|@args| ::GWTX:: $@args }
 
 fn gwtx {|@args|
-  if (and (eq (count $@args) 1) (eq $args[0] 'switch')) {
-    # Only use interactive path selection when "switch" has no additional arguments
+  if (and (eq (count $@args) 1) (eq $args[0] 'cd')) {
+    # Only use interactive path selection when "cd" has no additional arguments
     # If any arguments are provided (like --help), pass them to the command
     var dest = (::GWTX:: path)
     if (not (eq $dest '')) {
       cd $dest
+    }
+  } elif (and (> (count $@args) 0) (eq $args[0] 'add')) {
+    var cd_to = (try { ::GWTX:: config get auto_cd.after_add } catch { "" })
+
+    # Capture output while displaying it
+    var tmpfile = (mktemp)
+    try {
+      ::GWTX:: $@args 2>&1 | tee $tmpfile
+    } catch {
+      rm -f $tmpfile
+      fail "gwtx add failed"
+    }
+
+    if (eq $cd_to 'true') {
+      var new_path = (tail -1 $tmpfile)
+      if (and (not (eq $new_path '')) (path:is-dir $new_path)) {
+        cd $new_path
+      }
+    }
+
+    rm -f $tmpfile
+  } elif (and (> (count $@args) 0) (or (eq $args[0] 'remove') (eq $args[0] 'rm'))) {
+    var current_dir = $pwd
+    # Get settings BEFORE removing (directory may not exist after)
+    var cd_to = (try { ::GWTX:: config get auto_cd.after_remove } catch { "" })
+    var main_path = (try { ::GWTX:: path --main } catch { "" })
+
+    __gwtx_cmd $@args
+
+    # Check if current directory was removed
+    if (not (path:is-dir $current_dir)) {
+      if (eq $cd_to 'main') {
+        if (not (eq $main_path '')) {
+          cd $main_path
+        }
+      } elif (eq $cd_to 'select') {
+        var dest = (::GWTX:: path)
+        if (not (eq $dest '')) {
+          cd $dest
+        }
+      }
     }
   } else {
     __gwtx_cmd $@args

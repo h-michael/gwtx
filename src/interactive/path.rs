@@ -15,7 +15,7 @@ pub(crate) fn run_path_interactive(worktrees: &[WorktreeInfo]) -> Result<PathBuf
         });
     }
 
-    let entries = build_worktree_entries(worktrees, true);
+    let entries = build_worktree_entries(worktrees, true, None);
     if entries.is_empty() {
         return Err(Error::NoWorktreesFound);
     }

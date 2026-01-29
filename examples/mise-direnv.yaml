@@ -3,8 +3,7 @@
 # mise and direnv integration example
 # Automatically set up development tools and environment
 
-defaults:
-  on_conflict: skip
+on_conflict: skip
 
 # Link direnv configuration
 link:

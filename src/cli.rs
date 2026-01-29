@@ -56,11 +56,11 @@ EXAMPLES:
     gwtx untrust --list
         List all trusted repositories
 
-    gwtx switch
-        Select a worktree and switch to it (requires shell integration)
+    gwtx cd
+        Select a worktree and cd to it (requires shell integration)
 
     cd \"$(gwtx path)\"
-        Select a worktree and print its path
+        Select a worktree and print its path (works without shell integration)
 
     eval \"$(gwtx init bash)\"
         Enable shell completions and trust warnings")]
@@ -86,10 +86,10 @@ pub(crate) enum Command {
     List(ListArgs),
 
     /// Select a worktree and print its path
-    Path,
+    Path(PathArgs),
 
-    /// Switch to a selected worktree (requires shell integration)
-    Switch,
+    /// Change directory to a selected worktree (requires shell integration)
+    Cd,
 
     /// Manage .gwtx.yaml configuration
     Config(ConfigArgs),
@@ -216,9 +216,26 @@ pub(crate) enum ConfigCommand {
     Schema,
     /// Create a new configuration file
     New {
-        /// Create global config (XDG_CONFIG_HOME/gwtx/config.yaml)
-        #[arg(short, long)]
+        /// Create global config at:
+        ///   - $XDG_CONFIG_HOME/gwtx/config.yaml (if XDG_CONFIG_HOME is set)
+        ///   - ~/.config/gwtx/config.yaml (Linux)
+        ///   - ~/Library/Application Support/gwtx/config.yaml (macOS)
+        ///   - %APPDATA%\gwtx\config.yaml (Windows)
+        #[arg(short, long, verbatim_doc_comment)]
         global: bool,
+
+        /// Custom path for the config file
+        #[arg(short, long)]
+        path: Option<std::path::PathBuf>,
+
+        /// Overwrite existing config file
+        #[arg(short = 'O', long = "override")]
+        override_existing: bool,
+    },
+    /// Get a configuration value
+    Get {
+        /// Configuration key (e.g., auto_cd.after_remove)
+        key: String,
     },
 }
 
@@ -377,6 +394,9 @@ EXAMPLES:
     gwtx remove --i
         Select worktrees to remove interactively
 
+    gwtx remove --current
+        Remove the worktree containing the current directory
+
     gwtx remove --dry-run ../target-worktree-path
         Preview what would be removed without executing
 
@@ -390,13 +410,17 @@ SAFETY CHECKS:
 
     Use --force to skip safety checks and force removal.")]
 pub(crate) struct RemoveArgs {
-    /// Worktree paths to remove (required unless --interactive)
+    /// Worktree paths to remove (required unless --interactive or --current)
     pub paths: Vec<PathBuf>,
 
     // --- gwtx Options ---
     /// Interactive mode: select worktrees to remove
     #[arg(short, long, help_heading = "gwtx Options")]
     pub interactive: bool,
+
+    /// Remove the worktree containing the current directory
+    #[arg(short = 'c', long, help_heading = "gwtx Options")]
+    pub current: bool,
 
     /// Preview actions without executing
     #[arg(long, help_heading = "gwtx Options")]
@@ -569,7 +593,7 @@ pub(crate) struct TrustArgs {
 SHELL INTEGRATION:
     gwtx init enables shell integration features:
     - Shell completions for all gwtx commands and options
-    - gwtx switch command for interactive worktree switching
+    - gwtx cd command for interactive worktree changing
     - Automatic trust warnings when entering directories with untrusted hooks
 
 INSTALLATION:
@@ -595,11 +619,11 @@ FEATURES:
         Provides intelligent tab completion for gwtx commands and options.
         Works across all supported shells.
 
-    gwtx switch Command
-        Interactive fuzzy finder to select and switch to a worktree.
+    gwtx cd Command
+        Interactive fuzzy finder to select and cd to a worktree.
         Uses ratatui-based UI across platforms
 
-        Note: gwtx switch requires shell integration.
+        Note: gwtx cd requires shell integration.
         Without shell integration, use: cd \"$(gwtx path)\"
 
     Trust Warnings
@@ -629,6 +653,27 @@ pub(crate) struct InitArgs {
     /// Print the full init script instead of the stub
     #[arg(long)]
     pub print_full_init: bool,
+}
+
+/// Arguments for the `path` subcommand.
+#[derive(Parser, Debug)]
+#[command(after_help = "\
+EXAMPLES:
+    gwtx path
+        Select a worktree interactively and print its path
+
+    gwtx path --main
+        Print the main worktree path (useful for shell integration)
+
+    cd \"$(gwtx path)\"
+        Select a worktree and change to it
+
+    cd \"$(gwtx path --main)\"
+        Change to the main worktree")]
+pub(crate) struct PathArgs {
+    /// Print the main worktree path instead of interactive selection
+    #[arg(long)]
+    pub main: bool,
 }
 
 /// Arguments for the `untrust` subcommand.

@@ -1,4 +1,5 @@
 mod add;
+mod cd;
 mod completions;
 mod config;
 mod init;
@@ -7,12 +8,12 @@ mod man;
 mod path;
 mod remove;
 mod schema;
-mod switch;
 mod trust;
 mod trust_check;
 mod untrust;
 
 pub(crate) use add::run as add;
+pub(crate) use cd::run as cd;
 pub(crate) use completions::run as completions;
 pub(crate) use config::run as config;
 pub(crate) use init::run as init;
@@ -21,6 +22,5 @@ pub(crate) use man::run as man;
 pub(crate) use path::run as path;
 pub(crate) use remove::run as remove;
 pub(crate) use schema::run as schema;
-pub(crate) use switch::run as switch;
 pub(crate) use trust::run as trust;
 pub(crate) use untrust::run as untrust;
