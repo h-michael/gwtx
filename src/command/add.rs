@@ -356,7 +356,7 @@ fn run_setup(
                 source: &repo_root.join(&expanded_link.source),
                 target: &worktree_path.join(&expanded_link.target),
                 op_type: FileOp::Link,
-                config_mode: expanded_link.on_conflict.or(config.defaults.on_conflict),
+                config_mode: expanded_link.on_conflict.or(config.on_conflict),
                 description: expanded_link.description.as_deref(),
             };
             process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;
@@ -369,7 +369,7 @@ fn run_setup(
             source: &repo_root.join(&copy.source),
             target: &worktree_path.join(&copy.target),
             op_type: FileOp::Copy,
-            config_mode: copy.on_conflict.or(config.defaults.on_conflict),
+            config_mode: copy.on_conflict.or(config.on_conflict),
             description: copy.description.as_deref(),
         };
         process_operation(&params, &mut conflict_mode_override, args.dry_run, output)?;

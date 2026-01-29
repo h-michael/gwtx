@@ -431,7 +431,7 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
 #[cfg(all(test, feature = "impure-test"))]
 mod tests {
     use super::*;
-    use crate::config::{Config, Defaults, Hooks, Mkdir, Ui, Worktree};
+    use crate::config::{AutoCd, Config, Hooks, Mkdir, Ui, Worktree};
     use std::sync::OnceLock;
     use tempfile::TempDir;
 
@@ -443,7 +443,8 @@ mod tests {
 
     fn create_test_config() -> Config {
         Config {
-            defaults: Defaults { on_conflict: None },
+            on_conflict: None,
+            auto_cd: AutoCd::default(),
             worktree: Worktree {
                 path_template: None,
                 branch_template: None,

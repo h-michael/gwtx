@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 
 pub(crate) fn run() -> Result<()> {
-    Err(Error::SwitchRequiresShellIntegration)
+    Err(Error::CdRequiresShellIntegration)
 }
 
 #[cfg(test)]
@@ -13,7 +13,7 @@ mod tests {
         let result = run();
         assert!(matches!(
             result.unwrap_err(),
-            Error::SwitchRequiresShellIntegration
+            Error::CdRequiresShellIntegration
         ));
     }
 }

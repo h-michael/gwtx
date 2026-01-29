@@ -10,8 +10,7 @@
 #
 # Note: These files/directories are typically gitignored via global git config (~/.config/git/ignore)
 
-defaults:
-  on_conflict: skip
+on_conflict: skip
 
 # Claude Code (CLI)
 # Link .claude/ directory (project-specific Claude Code instructions)

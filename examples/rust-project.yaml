@@ -3,8 +3,7 @@
 # Rust project configuration example
 # Share build cache and set up development environment
 
-defaults:
-  on_conflict: skip
+on_conflict: skip
 
 # Create directories
 mkdir:

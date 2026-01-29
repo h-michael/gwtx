@@ -28,7 +28,8 @@ pub(crate) fn run_remove_selection(worktrees: &[WorktreeInfo]) -> Result<Vec<Pat
         });
     }
 
-    let entries = build_worktree_entries(worktrees, false);
+    let current_dir = std::env::current_dir().ok();
+    let entries = build_worktree_entries(worktrees, false, current_dir.as_deref());
     if entries.is_empty() {
         return Err(Error::NoWorktreesToRemove);
     }

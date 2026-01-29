@@ -57,24 +57,21 @@ link:
 
 /// Configuration with on_conflict option
 pub const CONFIG_WITH_CONFLICT_SKIP: &str = r#"
-defaults:
-  on_conflict: skip
+on_conflict: skip
 
 link:
   - source: local.env
 "#;
 
 pub const CONFIG_WITH_CONFLICT_BACKUP: &str = r#"
-defaults:
-  on_conflict: backup
+on_conflict: backup
 
 link:
   - source: local.env
 "#;
 
 pub const CONFIG_WITH_CONFLICT_OVERWRITE: &str = r#"
-defaults:
-  on_conflict: overwrite
+on_conflict: overwrite
 
 link:
   - source: local.env

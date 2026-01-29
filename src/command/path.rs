@@ -1,15 +1,22 @@
+use crate::cli::PathArgs;
 use crate::error::{Error, Result};
 use crate::git;
 use crate::interactive::run_path_interactive;
 
-pub(crate) fn run() -> Result<()> {
+pub(crate) fn run(args: PathArgs) -> Result<()> {
     if !git::is_inside_repo() {
         return Err(Error::NotInGitRepo);
     }
 
-    let worktrees = git::list_worktrees()?;
-    let selected = run_path_interactive(&worktrees)?;
-    println!("{}", selected.display());
+    if args.main {
+        let repo_root = git::repository_root()?;
+        let main_path = git::main_worktree_path_for(&repo_root)?;
+        println!("{}", main_path.display());
+    } else {
+        let worktrees = git::list_worktrees()?;
+        let selected = run_path_interactive(&worktrees)?;
+        println!("{}", selected.display());
+    }
     Ok(())
 }
 

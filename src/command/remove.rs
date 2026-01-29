@@ -30,6 +30,14 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
 
     let targets = if args.interactive {
         select_worktrees_interactively(&worktrees)?
+    } else if args.current {
+        let current_worktree = find_current_worktree(&worktrees)?;
+        let mut paths = vec![current_worktree];
+        // Also include any explicitly specified paths
+        if !args.paths.is_empty() {
+            paths.extend(resolve_worktree_paths(&args.paths, &worktrees)?);
+        }
+        paths
     } else if args.paths.is_empty() {
         return Err(Error::PathRequired);
     } else {
@@ -148,6 +156,21 @@ fn select_worktrees_interactively(worktrees: &[WorktreeInfo]) -> Result<Vec<Path
 
     let paths = run_remove_selection(worktrees)?;
     Ok(paths)
+}
+
+fn find_current_worktree(worktrees: &[WorktreeInfo]) -> Result<PathBuf> {
+    let current_dir = std::env::current_dir()?;
+    let current_dir = current_dir
+        .canonicalize()
+        .unwrap_or_else(|_| current_dir.clone());
+
+    for wt in worktrees {
+        if current_dir.starts_with(&wt.path) {
+            return Ok(wt.path.clone());
+        }
+    }
+
+    Err(Error::NotInWorktree)
 }
 
 fn resolve_worktree_paths(paths: &[PathBuf], worktrees: &[WorktreeInfo]) -> Result<Vec<PathBuf>> {

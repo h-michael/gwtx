@@ -23,6 +23,8 @@ use super::{
 pub(crate) struct WorktreeEntry {
     pub display: String,
     pub path: PathBuf,
+    #[allow(dead_code)]
+    pub is_current: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,14 +38,17 @@ pub(crate) enum SelectMode {
 /// # Arguments
 /// * `worktrees` - List of worktree information from git
 /// * `include_main` - If true, includes the main worktree; if false, filters it out
+/// * `current_dir` - Optional current directory to mark with [current]
 ///
 /// # Display format
-/// Each entry shows: `{path} ({branch})[main][locked]`
+/// Each entry shows: `{path} ({branch})[main][locked][current]`
 /// - `[main]` indicator only shown when `include_main` is true
 /// - `[locked]` indicator shown for locked worktrees
+/// - `[current]` indicator shown for the worktree containing current_dir
 pub(crate) fn build_worktree_entries(
     worktrees: &[WorktreeInfo],
     include_main: bool,
+    current_dir: Option<&std::path::Path>,
 ) -> Vec<WorktreeEntry> {
     worktrees
         .iter()
@@ -60,15 +65,21 @@ pub(crate) fn build_worktree_entries(
                 ""
             };
             let lock_info = if wt.is_locked { " [locked]" } else { "" };
+            let is_current = current_dir
+                .map(|dir| dir.starts_with(&wt.path))
+                .unwrap_or(false);
+            let current_info = if is_current { " [current]" } else { "" };
             WorktreeEntry {
                 display: format!(
-                    "{} ({}){}{}",
+                    "{} ({}){}{}{}",
                     wt.path.display(),
                     branch_info,
                     main_info,
-                    lock_info
+                    lock_info,
+                    current_info
                 ),
                 path: wt.path.clone(),
+                is_current,
             }
         })
         .collect()
@@ -416,7 +427,7 @@ mod tests {
             is_locked: false,
         }];
 
-        let result = build_worktree_entries(&worktrees, true);
+        let result = build_worktree_entries(&worktrees, true, None);
 
         assert_eq!(result.len(), 1);
         assert!(result[0].display.contains("[main]"));
@@ -441,7 +452,7 @@ mod tests {
             },
         ];
 
-        let result = build_worktree_entries(&worktrees, false);
+        let result = build_worktree_entries(&worktrees, false, None);
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].path, PathBuf::from("/repo/feature-1"));
@@ -451,7 +462,7 @@ mod tests {
     fn test_build_worktree_entries_empty_list() {
         let worktrees: Vec<WorktreeInfo> = vec![];
 
-        let result = build_worktree_entries(&worktrees, true);
+        let result = build_worktree_entries(&worktrees, true, None);
 
         assert!(result.is_empty());
     }
@@ -466,7 +477,7 @@ mod tests {
             is_locked: false,
         }];
 
-        let result = build_worktree_entries(&worktrees, false);
+        let result = build_worktree_entries(&worktrees, false, None);
 
         assert!(result.is_empty());
     }
@@ -497,7 +508,7 @@ mod tests {
             },
         ];
 
-        let result = build_worktree_entries(&worktrees, false);
+        let result = build_worktree_entries(&worktrees, false, None);
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].path, PathBuf::from("/repo/feature-1"));
@@ -530,7 +541,7 @@ mod tests {
             },
         ];
 
-        let result = build_worktree_entries(&worktrees, true);
+        let result = build_worktree_entries(&worktrees, true, None);
 
         assert_eq!(result.len(), 3);
         assert!(result[0].display.contains("[main]"));
@@ -572,7 +583,7 @@ mod tests {
             },
         ];
 
-        let result = build_worktree_entries(&worktrees, false);
+        let result = build_worktree_entries(&worktrees, false, None);
 
         assert_eq!(result.len(), 3);
         assert!(result[0].display.contains("feature-1"));
@@ -590,10 +601,75 @@ mod tests {
             is_locked: false,
         }];
 
-        let result = build_worktree_entries(&worktrees, true);
+        let result = build_worktree_entries(&worktrees, true, None);
 
         assert_eq!(result.len(), 1);
         assert!(result[0].display.contains("(detached)"));
+    }
+
+    #[test]
+    fn test_build_worktree_entries_current_marker() {
+        let worktrees = vec![
+            WorktreeInfo {
+                path: PathBuf::from("/repo/.git"),
+                head: "abc123".to_string(),
+                branch: Some("refs/heads/main".to_string()),
+                is_main: true,
+                is_locked: false,
+            },
+            WorktreeInfo {
+                path: PathBuf::from("/repo/feature-1"),
+                head: "def456".to_string(),
+                branch: Some("refs/heads/feature-1".to_string()),
+                is_main: false,
+                is_locked: false,
+            },
+        ];
+
+        // current_dir is inside feature-1 worktree
+        let current_dir = PathBuf::from("/repo/feature-1/src");
+        let result = build_worktree_entries(&worktrees, false, Some(&current_dir));
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].display.contains("[current]"));
+        assert!(result[0].is_current);
+    }
+
+    #[test]
+    fn test_build_worktree_entries_no_current_marker() {
+        let worktrees = vec![WorktreeInfo {
+            path: PathBuf::from("/repo/feature-1"),
+            head: "def456".to_string(),
+            branch: Some("refs/heads/feature-1".to_string()),
+            is_main: false,
+            is_locked: false,
+        }];
+
+        // current_dir is NOT inside this worktree
+        let current_dir = PathBuf::from("/other/dir");
+        let result = build_worktree_entries(&worktrees, true, Some(&current_dir));
+
+        assert_eq!(result.len(), 1);
+        assert!(!result[0].display.contains("[current]"));
+        assert!(!result[0].is_current);
+    }
+
+    #[test]
+    fn test_build_worktree_entries_current_marker_none() {
+        let worktrees = vec![WorktreeInfo {
+            path: PathBuf::from("/repo/feature-1"),
+            head: "def456".to_string(),
+            branch: Some("refs/heads/feature-1".to_string()),
+            is_main: false,
+            is_locked: false,
+        }];
+
+        // current_dir is None
+        let result = build_worktree_entries(&worktrees, true, None);
+
+        assert_eq!(result.len(), 1);
+        assert!(!result[0].display.contains("[current]"));
+        assert!(!result[0].is_current);
     }
 
     // WorktreeEntry and SelectMode tests
@@ -603,14 +679,17 @@ mod tests {
             WorktreeEntry {
                 display: "main".to_string(),
                 path: PathBuf::from("/repo"),
+                is_current: false,
             },
             WorktreeEntry {
                 display: "feature-a".to_string(),
                 path: PathBuf::from("/repo-feature-a"),
+                is_current: false,
             },
             WorktreeEntry {
                 display: "feature-b".to_string(),
                 path: PathBuf::from("/repo-feature-b"),
+                is_current: false,
             },
         ]
     }
@@ -620,9 +699,11 @@ mod tests {
         let entry = WorktreeEntry {
             display: "test-branch".to_string(),
             path: PathBuf::from("/path/to/worktree"),
+            is_current: false,
         };
         assert_eq!(entry.display, "test-branch");
         assert_eq!(entry.path, PathBuf::from("/path/to/worktree"));
+        assert!(!entry.is_current);
     }
 
     #[test]

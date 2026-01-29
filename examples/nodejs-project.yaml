@@ -3,8 +3,7 @@
 # Node.js project configuration example
 # Automatically set up environment and install dependencies
 
-defaults:
-  on_conflict: skip
+on_conflict: skip
 
 # Install dependencies after worktree creation
 hooks:
