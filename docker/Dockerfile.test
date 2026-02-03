@@ -1,7 +1,7 @@
 # Dockerfile for gwtx integration tests
 # Supports rootless Docker with UID/GID mapping
 
-FROM rust:1.86-bookworm
+FROM rust:1.88-bookworm
 
 # Install git (required for worktree operations)
 RUN apt-get update && apt-get install -y \

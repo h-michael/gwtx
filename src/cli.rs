@@ -6,7 +6,9 @@ use clap_complete::Shell;
 /// CLI arguments.
 #[derive(Parser, Debug)]
 #[command(name = "gwtx")]
-#[command(about = "git/jj worktree extra - enhance git worktree and jj workspace with automated setup")]
+#[command(
+    about = "git/jj worktree extra - enhance git worktree and jj workspace with automated setup"
+)]
 #[command(version = VERSION_STRING)]
 #[command(after_help = "\
 VCS SUPPORT:

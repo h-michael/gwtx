@@ -429,6 +429,7 @@ pub(crate) fn list_trusted() -> Result<Vec<TrustEntry>> {
 }
 
 #[cfg(all(test, feature = "impure-test"))]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::config::{AutoCd, Config, Hooks, Mkdir, Ui, Worktree};

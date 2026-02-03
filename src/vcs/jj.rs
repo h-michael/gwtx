@@ -531,7 +531,14 @@ fn get_workspace_path_by_name(repo_root: &Path, name: &str) -> Option<PathBuf> {
 fn get_workspace_bookmark(workspace_path: &Path) -> Result<Option<String>> {
     // Get any associated bookmarks for the current change
     let output = Command::new("jj")
-        .args(["log", "-r", "@", "--no-graph", "-T", "bookmarks.join(\",\")"])
+        .args([
+            "log",
+            "-r",
+            "@",
+            "--no-graph",
+            "-T",
+            "bookmarks.join(\",\")",
+        ])
         .current_dir(workspace_path)
         .output();
 
