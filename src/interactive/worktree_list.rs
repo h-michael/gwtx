@@ -15,8 +15,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::{
-    BODY_PADDING, HEADER_HEIGHT, STEP_SELECT_WORKTREE, UiTheme, read_key_event,
-    render_breadcrumb_line, truncate_text_for_width, with_terminal,
+    BODY_PADDING, HEADER_HEIGHT, STEP_SELECT_WORKTREE, UiTheme, draw_help_modal, is_help_key,
+    read_key_event, render_breadcrumb_line, truncate_text_for_width, with_terminal,
 };
 
 #[derive(Debug, Clone)]
@@ -143,6 +143,7 @@ struct WorktreeListState {
     cursor: usize,
     selected: IndexSet<PathBuf>,
     matches: Vec<WorktreeEntry>,
+    show_help: bool,
 }
 
 impl WorktreeListState {
@@ -152,6 +153,7 @@ impl WorktreeListState {
             cursor: 0,
             selected: IndexSet::new(),
             matches: Vec::new(),
+            show_help: false,
         }
     }
 
@@ -240,6 +242,22 @@ fn handle_key_event(
     if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
         return Err(Error::Aborted);
     }
+
+    // Toggle help modal (F1 or Alt+H)
+    if is_help_key(&key) {
+        state.show_help = !state.show_help;
+        return Ok(InputAction::None);
+    }
+
+    // When help is shown, only handle close keys
+    if state.show_help {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => state.show_help = false,
+            _ => {}
+        }
+        return Ok(InputAction::None);
+    }
+
     match key.code {
         KeyCode::Esc => return Err(Error::Aborted),
         KeyCode::Enter => return Ok(InputAction::Accept),
@@ -299,8 +317,12 @@ fn draw_worktree_list(
     );
 
     let key_hints = match mode {
-        SelectMode::Single => "[Enter] select  [Esc] cancel  [↑/↓] move  [Ctrl+U] clear",
-        SelectMode::Multi => "[Enter] confirm  [Esc] cancel  [Space] toggle  [Ctrl+U] clear",
+        SelectMode::Single => {
+            "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Esc] cancel  [F1] help"
+        }
+        SelectMode::Multi => {
+            "[Enter] confirm  [Space] toggle  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Esc] cancel  [F1] help"
+        }
     };
 
     let title_line = render_breadcrumb_line(command_name, breadcrumbs, theme);
@@ -386,6 +408,10 @@ fn draw_worktree_list(
         )
         .wrap(Wrap { trim: true });
     frame.render_widget(preview_widget, body_chunks[1]);
+
+    if state.show_help {
+        draw_help_modal(frame, theme);
+    }
 }
 
 fn finalize_selection(state: &WorktreeListState, mode: SelectMode) -> Result<Vec<PathBuf>> {

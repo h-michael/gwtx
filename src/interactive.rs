@@ -2,13 +2,16 @@ use crate::error::{Error, Result};
 use crate::{config, vcs};
 
 use crossterm::ExecutableCommand;
-use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -436,6 +439,82 @@ fn truncate_text_for_width(text: String, width: u16) -> String {
         }
     }
     out
+}
+
+/// Check if key event is help toggle (F1)
+fn is_help_key(key: &KeyEvent) -> bool {
+    key.code == KeyCode::F(1)
+}
+
+/// Draw help modal overlay
+fn draw_help_modal(frame: &mut ratatui::Frame<'_>, theme: UiTheme) {
+    let size = frame.area();
+
+    let modal_width = std::cmp::min(58, size.width.saturating_sub(4));
+    let modal_height = std::cmp::min(20, size.height.saturating_sub(4));
+    let modal_x = (size.width.saturating_sub(modal_width)) / 2;
+    let modal_y = (size.height.saturating_sub(modal_height)) / 2;
+
+    let modal_area = Rect::new(modal_x, modal_y, modal_width, modal_height);
+
+    let lines = vec![
+        Line::from(Span::styled("Navigation", theme.title_style())),
+        Line::from(vec![
+            Span::styled("  [Up/Ctrl+P/Ctrl+K]     ", theme.accent_style()),
+            Span::raw("Move up"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Down/Ctrl+N/Ctrl+J]     ", theme.accent_style()),
+            Span::raw("Move down"),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("Actions", theme.title_style())),
+        Line::from(vec![
+            Span::styled("  [Enter]        ", theme.accent_style()),
+            Span::raw("Select / Confirm"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Tab]          ", theme.accent_style()),
+            Span::raw("Next step"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Shift+Tab]    ", theme.accent_style()),
+            Span::raw("Previous step"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Space]        ", theme.accent_style()),
+            Span::raw("Toggle selection"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Esc]          ", theme.accent_style()),
+            Span::raw("Cancel"),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("Text Input", theme.title_style())),
+        Line::from(vec![
+            Span::styled("  [Left/Right]   ", theme.accent_style()),
+            Span::raw("Move cursor"),
+        ]),
+        Line::from(vec![
+            Span::styled("  [Ctrl+U]       ", theme.accent_style()),
+            Span::raw("Clear line"),
+        ]),
+        Line::from(vec![
+            Span::styled("  type           ", theme.accent_style()),
+            Span::raw("Enter text / Search"),
+        ]),
+    ];
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(theme.border_style())
+        .title(Span::styled(" Key Bindings ", theme.title_style()))
+        .padding(Padding::new(1, 1, 0, 0));
+
+    let paragraph = Paragraph::new(lines).style(theme.text_style()).block(block);
+
+    frame.render_widget(Clear, modal_area);
+    frame.render_widget(paragraph, modal_area);
 }
 
 #[cfg(test)]
