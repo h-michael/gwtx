@@ -1076,7 +1076,7 @@ fn draw_branch_step(
             .padding(Padding::new(1, 1, 0, 0))
             .title(Span::styled("Search", input.theme.title_style()));
         let search_line = Line::from(vec![
-            Span::styled("Search: ", input.theme.search_style()),
+            Span::styled("", input.theme.search_style()),
             Span::styled(
                 &state.branch_query,
                 input.theme.search_style().add_modifier(Modifier::BOLD),
@@ -1152,9 +1152,9 @@ fn draw_branch_preview(
     refresh_branch_preview(state, input);
 
     let header = if let Some(branch) = &state.preview_branch {
-        format!("Log ({})", branch)
+        format!("History ({})", branch)
     } else {
-        "Log".to_string()
+        "History".to_string()
     };
 
     let mut lines = Vec::new();
@@ -1616,11 +1616,10 @@ fn set_input_cursor(
 }
 
 fn set_search_cursor(frame: &mut ratatui::Frame<'_>, area: Rect, query: &str) {
-    let prefix = "Search: ";
     let padding_left = 1u16;
     let padding_top = 0u16;
     // Calculate display width using unicode-width
-    let x_offset = prefix.width() + query.width();
+    let x_offset = query.width();
     let x = area
         .x
         .saturating_add(1)
