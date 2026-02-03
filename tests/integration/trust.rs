@@ -6,7 +6,7 @@ fn test_trust_with_yes_flag() {
     let repo = TestRepo::with_config(CONFIG_WITH_HOOKS);
 
     // Trust with --yes flag
-    repo.gwtx()
+    repo.kabu()
         .args(["trust", "--yes"])
         .assert()
         .success()
@@ -18,7 +18,7 @@ fn test_trust_check_untrusted() {
     let repo = TestRepo::with_config(CONFIG_WITH_HOOKS);
 
     // Check trust status - should fail (exit code 1) when untrusted
-    repo.gwtx()
+    repo.kabu()
         .args(["trust", "--check"])
         .assert()
         .failure()
@@ -33,7 +33,7 @@ fn test_trust_check_trusted() {
     repo.trust_config();
 
     // Now check should succeed
-    repo.gwtx().args(["trust", "--check"]).assert().success();
+    repo.kabu().args(["trust", "--check"]).assert().success();
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn test_trust_show() {
     let repo = TestRepo::with_config(CONFIG_WITH_HOOKS);
 
     // Show hooks info
-    repo.gwtx()
+    repo.kabu()
         .args(["trust", "--show"])
         .assert()
         .success()
@@ -57,13 +57,13 @@ fn test_untrust() {
     repo.trust_config();
 
     // Verify trusted
-    repo.gwtx().args(["trust", "--check"]).assert().success();
+    repo.kabu().args(["trust", "--check"]).assert().success();
 
     // Now untrust
-    repo.gwtx().args(["untrust"]).assert().success();
+    repo.kabu().args(["untrust"]).assert().success();
 
     // Verify untrusted
-    repo.gwtx()
+    repo.kabu()
         .args(["trust", "--check"])
         .assert()
         .failure()
@@ -78,7 +78,7 @@ fn test_untrust_list() {
     repo.trust_config();
 
     // List trusted repos
-    repo.gwtx()
+    repo.kabu()
         .args(["untrust", "--list"])
         .assert()
         .success()
@@ -93,7 +93,7 @@ fn test_config_change_invalidates_trust() {
     repo.trust_config();
 
     // Verify trusted
-    repo.gwtx().args(["trust", "--check"]).assert().success();
+    repo.kabu().args(["trust", "--check"]).assert().success();
 
     // Modify the config
     let new_config = r#"
@@ -102,11 +102,11 @@ hooks:
     - command: echo "modified hook"
       description: Modified pre-add hook
 "#;
-    std::fs::write(repo.path().join(".gwtx").join("config.yaml"), new_config)
+    std::fs::write(repo.path().join(".kabu").join("config.yaml"), new_config)
         .expect("Failed to write config");
 
     // Trust should now fail
-    repo.gwtx()
+    repo.kabu()
         .args(["trust", "--check"])
         .assert()
         .failure()
@@ -124,7 +124,7 @@ fn test_trust_no_hooks_implicitly_trusted() {
     repo.create_file_and_commit("config.template", "# Config\n", "Add config");
 
     // Config without hooks should be implicitly trusted
-    repo.gwtx().args(["trust", "--check"]).assert().success();
+    repo.kabu().args(["trust", "--check"]).assert().success();
 }
 
 #[test]
@@ -135,7 +135,7 @@ fn test_re_trust_unchanged_config() {
     repo.trust_config();
 
     // Re-trusting unchanged config should show informational message
-    repo.gwtx()
+    repo.kabu()
         .args(["trust", "--yes"])
         .assert()
         .success()

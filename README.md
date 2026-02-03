@@ -1,8 +1,8 @@
-# gwtx (git/jj worktree extra)
+# kabu
 
-[![Crates.io](https://img.shields.io/crates/v/gwtx.svg)](https://crates.io/crates/gwtx)
-[![CI](https://github.com/h-michael/gwtx/actions/workflows/ci.yml/badge.svg)](https://github.com/h-michael/gwtx/actions/workflows/ci.yml)
-[![License](https://img.shields.io/crates/l/gwtx.svg)](LICENSE-MIT)
+[![Crates.io](https://img.shields.io/crates/v/kabu.svg)](https://crates.io/crates/kabu)
+[![CI](https://github.com/h-michael/kabu/actions/workflows/ci.yml/badge.svg)](https://github.com/h-michael/kabu/actions/workflows/ci.yml)
+[![License](https://img.shields.io/crates/l/kabu.svg)](LICENSE-MIT)
 
 CLI tool that enhances git worktree and jj workspace with automated setup and utilities.
 
@@ -20,21 +20,21 @@ Every time you create a git worktree or jj workspace, you end up doing the same 
 - Copying `.env.example` to `.env`
 - Creating cache directories
 
-gwtx reads `.gwtx/config.yaml` from your repository and runs these tasks automatically when creating a worktree or workspace. It automatically detects whether you're in a git repository or jj repository and uses the appropriate commands.
+kabu reads `.kabu/config.yaml` from your repository and runs these tasks automatically when creating a worktree or workspace. It automatically detects whether you're in a git repository or jj repository and uses the appropriate commands.
 
 ## Installation
 
 ```bash
-cargo install gwtx
+cargo install kabu
 ```
 
 See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub Releases).
 
 ## Quick Start
 
-1.  **Create `.gwtx/config.yaml`**: In your repository root, create a `.gwtx/config.yaml` file to define your worktree setup.
+1.  **Create `.kabu/config.yaml`**: In your repository root, create a `.kabu/config.yaml` file to define your worktree setup.
     ```yaml
-    # .gwtx/config.yaml example
+    # .kabu/config.yaml example
     mkdir:
       - path: build
         description: Build output directory
@@ -42,17 +42,17 @@ See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub R
       - source: .env.local
         description: Local environment variables
     ```
-2.  **Add a worktree**: Use `gwtx add` to create a new worktree with the defined setup.
+2.  **Add a worktree**: Use `kabu add` to create a new worktree with the defined setup.
     ```bash
-    gwtx add ../my-feature-worktree
+    kabu add ../my-feature-worktree
     ```
-    This will create a new worktree at `../my-feature-worktree` and apply the `mkdir` and `link` operations defined in `.gwtx/config.yaml`.
+    This will create a new worktree at `../my-feature-worktree` and apply the `mkdir` and `link` operations defined in `.kabu/config.yaml`.
 
-For comprehensive details on all commands, options, and configuration, please refer to the CLI's built-in help (`gwtx --help` and `gwtx <subcommand> --help`) and `man` pages (`gwtx man`).
+For comprehensive details on all commands, options, and configuration, please refer to the CLI's built-in help (`kabu --help` and `kabu <subcommand> --help`) and `man` pages (`kabu man`).
 
 ## VCS Support
 
-gwtx automatically detects the version control system in use:
+kabu automatically detects the version control system in use:
 
 | VCS | Detection | Commands Used |
 |-----|-----------|---------------|
@@ -60,7 +60,7 @@ gwtx automatically detects the version control system in use:
 | **jj (Jujutsu)** | `.jj` directory | `jj workspace add/forget/list` |
 | **jj colocated** | Both `.git` and `.jj` | `jj workspace` commands |
 
-All gwtx commands work the same regardless of the underlying VCS. The tool transparently translates operations to the appropriate VCS commands.
+All kabu commands work the same regardless of the underlying VCS. The tool transparently translates operations to the appropriate VCS commands.
 
 **jj-specific notes:**
 - jj "workspaces" serve a similar purpose to git "worktrees" (multiple working directories for the same repository)
@@ -73,32 +73,32 @@ All gwtx commands work the same regardless of the underlying VCS. The tool trans
 
 ```bash
 # Create a worktree/workspace with setup
-gwtx add ../feature-branch
+kabu add ../feature-branch
 
 # Create a new branch and worktree (git)
 # or new workspace with bookmark (jj)
-gwtx add -b new-feature ../new-feature
+kabu add -b new-feature ../new-feature
 
 # Interactive mode - select branch and path
-gwtx add --interactive
+kabu add --interactive
 
 # Preview without executing
-gwtx add --dry-run ../test
+kabu add --dry-run ../test
 ```
 
 ### Listing worktrees/workspaces
 
 ```bash
 # List all worktrees/workspaces with detailed information
-gwtx list
-gwtx ls  # Short alias
+kabu list
+kabu ls  # Short alias
 
 # Show header row with column names
-gwtx list --header
+kabu list --header
 
 # List only paths (useful for scripting)
-gwtx list --path-only
-gwtx ls -p
+kabu list --path-only
+kabu ls -p
 ```
 
 **Status Symbols:**
@@ -112,28 +112,28 @@ gwtx ls -p
 
 ```bash
 # Remove a worktree/workspace with safety checks
-gwtx remove ../feature-branch
+kabu remove ../feature-branch
 
 # Shorthand alias
-gwtx rm ../feature-branch
+kabu rm ../feature-branch
 
 # Remove current worktree/workspace (the one you're in)
-gwtx remove --current
+kabu remove --current
 
 # Interactive mode - select worktrees/workspaces to remove
 # Shows [current] marker for the one you're in
-gwtx remove --interactive
+kabu remove --interactive
 
 # Preview what would be removed
-gwtx remove --dry-run ../feature-branch
+kabu remove --dry-run ../feature-branch
 
 # Force removal (skip safety checks and confirmation)
-gwtx remove --force ../feature-branch
+kabu remove --force ../feature-branch
 ```
 
 **Safety Checks:**
 
-By default, `gwtx remove` warns about:
+By default, `kabu remove` warns about:
 - Modified files
 - Deleted files
 - Untracked files
@@ -145,30 +145,30 @@ Use `--force` to bypass all checks and confirmation prompts.
 
 ```bash
 # Interactively select and cd to a worktree
-gwtx cd
+kabu cd
 
 # Or get worktree path for scripting (works without shell integration)
-cd "$(gwtx path)"
+cd "$(kabu path)"
 ```
 
-**`gwtx cd`**: **Requires shell integration** (`gwtx init` - see [Shell Integration](#shell-integration) section). Displays an interactive fuzzy finder (on Unix) or selection menu (on Windows) and automatically changes to the selected worktree. If shell integration is not enabled, the command will display a helpful error message with setup instructions.
+**`kabu cd`**: **Requires shell integration** (`kabu init` - see [Shell Integration](#shell-integration) section). Displays an interactive fuzzy finder (on Unix) or selection menu (on Windows) and automatically changes to the selected worktree. If shell integration is not enabled, the command will display a helpful error message with setup instructions.
 
-**`gwtx path`**: Prints the selected worktree path to stdout. Works without shell integration. Useful for scripting or as a fallback.
+**`kabu path`**: Prints the selected worktree path to stdout. Works without shell integration. Useful for scripting or as a fallback.
 
 ### Configuration commands
 
 ```bash
 # Show config format help
-gwtx config
+kabu config
 
 # Create a new repo config
-gwtx config new
+kabu config new
 
 # Create a new global config
-gwtx config new --global
+kabu config new --global
 
 # Validate configuration
-gwtx config validate
+kabu config validate
 ```
 
 ### Hooks (trust required)
@@ -176,72 +176,72 @@ gwtx config validate
 Hooks allow you to run custom commands before/after worktree operations:
 
 ```bash
-# Review and trust hooks in .gwtx/config.yaml
-gwtx trust
+# Review and trust hooks in .kabu/config.yaml
+kabu trust
 
 # Show hooks without trusting
-gwtx trust --show
+kabu trust --show
 
 # Check trust status (exit 0 if trusted, 1 if untrusted)
-gwtx trust --check
+kabu trust --check
 
 # Revoke trust
-gwtx untrust
+kabu untrust
 
 # List all trusted repositories
-gwtx untrust --list
+kabu untrust --list
 ```
 
-**Security:** For security, hooks require explicit trust via `gwtx trust` before execution. See [Hooks Configuration](#hooks) below.
+**Security:** For security, hooks require explicit trust via `kabu trust` before execution. See [Hooks Configuration](#hooks) below.
 
 ## Shell Integration
 
-**Optional feature.** Shell integration is not required for basic gwtx functionality (`add`, `remove`, `list`, `path`, etc.). It only adds quality-of-life improvements.
+**Optional feature.** Shell integration is not required for basic kabu functionality (`add`, `remove`, `list`, `path`, etc.). It only adds quality-of-life improvements.
 
 To enable shell completions and automatic hook trust warnings, add the following to your shell configuration:
 
 **Bash** (`~/.bashrc`):
 ```bash
-eval "$(gwtx init bash)"
+eval "$(kabu init bash)"
 ```
 
 **Zsh** (`~/.zshrc`):
 ```zsh
-eval "$(gwtx init zsh)"
+eval "$(kabu init zsh)"
 ```
 
 **Fish** (`~/.config/fish/config.fish`):
 ```fish
-gwtx init fish | source
+kabu init fish | source
 ```
 
 **PowerShell** (profile):
 ```powershell
-Invoke-Expression (& gwtx init powershell | Out-String)
+Invoke-Expression (& kabu init powershell | Out-String)
 ```
 
 **Elvish** (`~/.config/elvish/rc.elv`):
 ```elvish
-eval (gwtx init elvish | slurp)
+eval (kabu init elvish | slurp)
 ```
 
 Shell integration provides:
 - **Shell completions** for commands and options
-- **`gwtx cd` command** to interactively change directory to selected worktree (only available with shell integration)
+- **`kabu cd` command** to interactively change directory to selected worktree (only available with shell integration)
 - **Auto cd after add** - Automatically `cd` to newly created worktree (configurable via `auto_cd.after_add`)
 - **Auto cd after remove** - Automatically `cd` when current worktree is removed (configurable via `auto_cd.after_remove`)
 - **Automatic trust warnings** when entering directories with untrusted hooks
 
 ## Configuration
 
-Create `.gwtx/config.yaml` in your repository root. See [examples/](examples/) for various use cases.
+Create `.kabu/config.yaml` in your repository root. See [examples/](examples/) for various use cases.
 
-**JSON Schema:** The configuration format is validated against a JSON Schema located at `schema/gwtx.schema.json`. This schema can be used with editors that support YAML schema validation for autocomplete and validation.
+**JSON Schema:** The configuration format is validated against a JSON Schema located at `schema/kabu.schema.json`. This schema can be used with editors that support YAML schema validation for autocomplete and validation.
 
-**Editor Integration:** To enable schema validation in VS Code or other editors using [yaml-language-server](https://github.com/redhat-developer/yaml-language-server#using-inlined-schema), add this comment at the top of your `.gwtx/config.yaml`:
+**Editor Integration:** To enable schema validation in VS Code or other editors using [yaml-language-server](https://github.com/redhat-developer/yaml-language-server#using-inlined-schema), add this comment at the top of your `.kabu/config.yaml`:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
 on_conflict: backup
 ```
@@ -311,7 +311,7 @@ link:
 
 ### Hooks
 
-Execute custom commands before/after worktree operations. **Requires explicit trust via `gwtx trust`.**
+Execute custom commands before/after worktree operations. **Requires explicit trust via `kabu trust`.**
 
 ```yaml
 hooks:
@@ -336,13 +336,13 @@ hooks:
 
 **Security:**
 - Variables are shell-escaped automatically (POSIX sh on Unix, PowerShell on Windows)
-- Must trust hooks via `gwtx trust` before execution
+- Must trust hooks via `kabu trust` before execution
 - Changes require re-trusting
 
 **Windows shells:**
 - Default shell auto-detect order: `pwsh` → `powershell` → `bash` (Git Bash) → `cmd`
-- Override with `--hook-shell` or `GWTHOOK_SHELL` (`pwsh`, `powershell`, `bash`, `cmd`, `wsl`)
-- `--hook-shell` takes precedence over `GWTHOOK_SHELL`
+- Override with `--hook-shell` or `KABUHOOK_SHELL` (`pwsh`, `powershell`, `bash`, `cmd`, `wsl`)
+- `--hook-shell` takes precedence over `KABUHOOK_SHELL`
 - `wsl` is only used when explicitly set, because Windows paths may not map to WSL
 
 **Examples:** [examples/hooks-basic.yaml](examples/hooks-basic.yaml), [examples/nodejs-project.yaml](examples/nodejs-project.yaml)
@@ -360,7 +360,7 @@ hooks:
 
 ### Conflict handling
 
-When a target file already exists, gwtx can:
+When a target file already exists, kabu can:
 
 - `abort` - Stop immediately (default in non-interactive mode)
 - `skip` - Skip the file and continue
@@ -395,18 +395,18 @@ auto_cd:
 
 ## Command Options
 
-### gwtx add
+### kabu add
 
 Passes through git worktree options:
 
 ```
-gwtx add [OPTIONS] [PATH] [COMMITISH]
+kabu add [OPTIONS] [PATH] [COMMITISH]
 
-gwtx Options:
+kabu Options:
   -i, --interactive         Interactive mode
       --on-conflict <MODE>  abort, skip, overwrite, backup
       --dry-run             Preview without executing
-      --no-setup            Skip .gwtx/config.yaml setup
+      --no-setup            Skip .kabu/config.yaml setup
       --hook-shell <SHELL>  Windows only: hook shell
 
 git worktree Options:
@@ -424,15 +424,15 @@ Shared:
   -q, --quiet               Suppress output
 ```
 
-### gwtx remove
+### kabu remove
 
-Remove worktrees with safety checks (alias: `gwtx rm`):
+Remove worktrees with safety checks (alias: `kabu rm`):
 
 ```
-gwtx remove [OPTIONS] [PATHS]...
-gwtx rm [OPTIONS] [PATHS]...
+kabu remove [OPTIONS] [PATHS]...
+kabu rm [OPTIONS] [PATHS]...
 
-gwtx Options:
+kabu Options:
   -i, --interactive         Select worktrees interactively
   -c, --current             Remove current worktree
       --dry-run             Preview without executing
@@ -451,20 +451,20 @@ Generate completion scripts for your shell:
 
 ```bash
 # Bash
-gwtx completions bash > ~/.local/share/bash-completion/completions/gwtx
+kabu completions bash > ~/.local/share/bash-completion/completions/kabu
 
 # Zsh (add ~/.zfunc to your fpath)
-gwtx completions zsh > ~/.zfunc/_gwtx
+kabu completions zsh > ~/.zfunc/_kabu
 
 # Fish
-gwtx completions fish > ~/.config/fish/completions/gwtx.fish
+kabu completions fish > ~/.config/fish/completions/kabu.fish
 
 # PowerShell (add to your profile)
-gwtx completions powershell >> $PROFILE
+kabu completions powershell >> $PROFILE
 
 # PowerShell (or save to a file and dot-source it)
-gwtx completions powershell > _gwtx.ps1
-# Then add to $PROFILE: . /path/to/_gwtx.ps1
+kabu completions powershell > _kabu.ps1
+# Then add to $PROFILE: . /path/to/_kabu.ps1
 ```
 
 Supported shells: bash, elvish, fish, powershell, zsh
@@ -479,10 +479,10 @@ Generate and install the man page:
 
 ```bash
 # Install to system
-sudo gwtx man > /usr/local/share/man/man1/gwtx.1
+sudo kabu man > /usr/local/share/man/man1/kabu.1
 
 # View without installing
-gwtx man | man -l -
+kabu man | man -l -
 ```
 
 ## Platform Support
@@ -492,7 +492,7 @@ gwtx man | man -l -
 Hooks are supported on Unix-like systems (Linux, macOS) and Windows.
 
 On Windows, hooks run via an auto-detected shell (`pwsh`, `powershell`, Git Bash,
-or `cmd`). Use `GWTHOOK_SHELL` to force a specific shell if needed.
+or `cmd`). Use `KABUHOOK_SHELL` to force a specific shell if needed.
 
 ### Windows
 

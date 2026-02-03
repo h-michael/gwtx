@@ -13,20 +13,20 @@ fn test_jj_list_basic() {
     let ws2_path = repo.workspace_path("list-ws2");
 
     // Create workspaces (name derived from path)
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws1_path.to_str().unwrap()])
         .assert()
         .success();
     repo.register_workspace(ws1_path.clone());
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws2_path.to_str().unwrap()])
         .assert()
         .success();
     repo.register_workspace(ws2_path.clone());
 
     // List workspaces
-    repo.gwtx()
+    repo.kabu()
         .args(["list"])
         .assert()
         .success()
@@ -45,7 +45,7 @@ fn test_jj_list_path_only() {
     let ws_path = repo.workspace_path("path-only-ws");
 
     // Create a workspace
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws_path.to_str().unwrap()])
         .assert()
         .success();
@@ -53,7 +53,7 @@ fn test_jj_list_path_only() {
 
     // List with --path-only
     // Note: macOS may resolve /var to /private/var, so just check the workspace name in the path
-    repo.gwtx()
+    repo.kabu()
         .args(["list", "--path-only"])
         .assert()
         .success()
@@ -71,14 +71,14 @@ fn test_jj_list_with_header() {
     let ws_path = repo.workspace_path("header-ws");
 
     // Create a workspace
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws_path.to_str().unwrap()])
         .assert()
         .success();
     repo.register_workspace(ws_path.clone());
 
     // List with --header
-    repo.gwtx()
+    repo.kabu()
         .args(["list", "--header"])
         .assert()
         .success()
@@ -99,7 +99,7 @@ fn test_jj_list_alias_ls() {
     let repo = JjTestRepo::with_config(MINIMAL_CONFIG);
 
     // ls should work as alias for list
-    repo.gwtx().args(["ls"]).assert().success();
+    repo.kabu().args(["ls"]).assert().success();
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn test_jj_list_shows_default_workspace() {
 
     // List should show the default workspace (repo path)
     // Note: The repo path contains "repo" directory name
-    repo.gwtx()
+    repo.kabu()
         .args(["list"])
         .assert()
         .success()
@@ -131,14 +131,14 @@ fn test_jj_list_colocated() {
     let ws_path = repo.workspace_path("colocated-list-ws");
 
     // Create a workspace in colocated repo
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws_path.to_str().unwrap()])
         .assert()
         .success();
     repo.register_workspace(ws_path.clone());
 
     // List should show both default (repo path) and new workspace
-    repo.gwtx()
+    repo.kabu()
         .args(["list"])
         .assert()
         .success()

@@ -1,7 +1,7 @@
 //! Path selection command implementation.
 //!
 //! Interactively selects a worktree/workspace and prints its path to stdout.
-//! Works without shell integration, useful for scripting: `cd "$(gwtx path)"`
+//! Works without shell integration, useful for scripting: `cd "$(kabu path)"`
 
 use crate::cli::PathArgs;
 use crate::error::{Error, Result};

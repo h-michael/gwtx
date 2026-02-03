@@ -134,10 +134,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Generate schema and check if up-to-date
         run: |
-          cargo run --release -- config schema > /tmp/gwtx.schema.json
-          if ! diff -u schema/gwtx.schema.json /tmp/gwtx.schema.json; then
-            echo "Error: schema/gwtx.schema.json is out of date"
-            echo "Please run: gwtx config schema > schema/gwtx.schema.json"
+          cargo run --release -- config schema > /tmp/kabu.schema.json
+          if ! diff -u schema/kabu.schema.json /tmp/kabu.schema.json; then
+            echo "Error: schema/kabu.schema.json is out of date"
+            echo "Please run: kabu config schema > schema/kabu.schema.json"
             exit 1
           fi
 
@@ -151,7 +151,7 @@ jobs:
       - name: Build test container
         run: |
           docker build \
-            -t gwtx-test \
+            -t kabu-test \
             -f docker/Dockerfile.test \
             .
       - name: Run integration tests
@@ -162,5 +162,5 @@ jobs:
             -e CI=true \
             -e RUST_BACKTRACE=1 \
             -e CARGO_TARGET_DIR=/tmp/target \
-            gwtx-test \
+            kabu-test \
             cargo test --features impure-test

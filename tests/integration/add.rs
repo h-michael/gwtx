@@ -9,7 +9,7 @@ fn test_basic_worktree_add() {
     let mut repo = TestRepo::with_config(MINIMAL_CONFIG);
     let worktree_path = repo.worktree_path("feature-branch");
 
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -40,7 +40,7 @@ fn test_add_with_mkdir_link_copy() {
 
     let worktree_path = repo.worktree_path("wt-ops");
 
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -77,7 +77,7 @@ fn test_add_dry_run() {
 
     let worktree_path = repo.worktree_path("dry-run-test");
 
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -103,7 +103,7 @@ fn test_add_no_setup() {
 
     let worktree_path = repo.worktree_path("no-setup-test");
 
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -128,7 +128,7 @@ fn test_add_with_detach_flag() {
     let mut repo = TestRepo::with_config(MINIMAL_CONFIG);
     let worktree_path = repo.worktree_path("detached-head");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", worktree_path.to_str().unwrap(), "--detach"])
         .assert()
         .success();
@@ -142,7 +142,7 @@ fn test_add_with_branch_b_flag() {
     let mut repo = TestRepo::with_config(MINIMAL_CONFIG);
     let worktree_path = repo.worktree_path("new-branch");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", worktree_path.to_str().unwrap(), "-b", "new-branch"])
         .assert()
         .success();
@@ -157,14 +157,14 @@ fn test_add_with_branch_uppercase_b_flag() {
 
     // First create a branch in a worktree
     let first_path = repo.worktree_path("first-wt");
-    repo.gwtx()
+    repo.kabu()
         .args(["add", first_path.to_str().unwrap(), "-b", "test-branch"])
         .assert()
         .success();
     repo.register_worktree(first_path.clone());
 
     // Remove the first worktree (branch still exists)
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", first_path.to_str().unwrap()])
         .assert()
         .success();
@@ -172,7 +172,7 @@ fn test_add_with_branch_uppercase_b_flag() {
 
     // Now use -B to reset the existing branch and create a new worktree
     let second_path = repo.worktree_path("second-wt");
-    repo.gwtx()
+    repo.kabu()
         .args(["add", second_path.to_str().unwrap(), "-B", "test-branch"])
         .assert()
         .success();
@@ -188,7 +188,7 @@ fn test_add_missing_source_file() {
 
     let worktree_path = repo.worktree_path("missing-source");
 
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -211,7 +211,7 @@ fn test_add_on_conflict_skip() {
 
     let worktree_path = repo.worktree_path("conflict-skip");
 
-    // First add without gwtx to create a conflict
+    // First add without kabu to create a conflict
     std::process::Command::new("git")
         .current_dir(repo.path())
         .args([
@@ -242,9 +242,9 @@ fn test_add_on_conflict_skip() {
         .expect("Failed to remove worktree");
     repo.clear_registered_worktrees();
 
-    // Now add with gwtx - should skip the conflict
+    // Now add with kabu - should skip the conflict
     // Use -B to reset existing branch
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -301,7 +301,7 @@ fn test_add_on_conflict_backup() {
     repo.clear_registered_worktrees();
 
     // Use -B to reset existing branch
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -330,7 +330,7 @@ fn test_add_with_glob_pattern() {
 
     let worktree_path = repo.worktree_path("glob-test");
 
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -365,7 +365,7 @@ fn test_add_with_glob_ignore_tracked() {
 
     let worktree_path = repo.worktree_path("ignore-tracked-test");
 
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -424,7 +424,7 @@ fn test_add_on_conflict_overwrite() {
     repo.clear_registered_worktrees();
 
     // Use -B to reset existing branch
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),

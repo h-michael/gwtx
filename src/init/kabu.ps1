@@ -1,31 +1,31 @@
-# gwtx init (powershell)
-if (Get-Command ::GWTX:: -ErrorAction SilentlyContinue) {
-  & ::GWTX:: completions powershell | Out-String | Invoke-Expression
+# kabu init (powershell)
+if (Get-Command ::KABU:: -ErrorAction SilentlyContinue) {
+  & ::KABU:: completions powershell | Out-String | Invoke-Expression
 }
 
-function __gwtx_cmd {
+function __kabu_cmd {
   param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Args)
-  & ::GWTX:: @Args
+  & ::KABU:: @Args
 }
 
-function gwtx {
+function kabu {
   param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Args)
   if ($Args.Count -eq 1 -and $Args[0] -eq "cd") {
     # Only use interactive path selection when "cd" has no additional arguments
     # If any arguments are provided (like --help), pass them to the command
-    $dest = __gwtx_cmd path
+    $dest = __kabu_cmd path
     if ($dest) {
       Set-Location $dest
     }
   } elseif ($Args.Count -ge 1 -and $Args[0] -eq "add") {
     $cdTo = ""
     try {
-      $cdTo = __gwtx_cmd config get auto_cd.after_add 2>$null
+      $cdTo = __kabu_cmd config get auto_cd.after_add 2>$null
     } catch {}
 
     # Capture output while displaying it
     $tmpfile = [System.IO.Path]::GetTempFileName()
-    __gwtx_cmd @Args 2>&1 | Tee-Object -FilePath $tmpfile
+    __kabu_cmd @Args 2>&1 | Tee-Object -FilePath $tmpfile
     $cmdSuccess = $?
 
     if ($cmdSuccess -and $cdTo -eq "true") {
@@ -43,11 +43,11 @@ function gwtx {
     $cdTo = ""
     $mainPath = ""
     try {
-      $cdTo = __gwtx_cmd config get auto_cd.after_remove 2>$null
-      $mainPath = __gwtx_cmd path --main 2>$null
+      $cdTo = __kabu_cmd config get auto_cd.after_remove 2>$null
+      $mainPath = __kabu_cmd path --main 2>$null
     } catch {}
 
-    __gwtx_cmd @Args
+    __kabu_cmd @Args
     if (-not $?) { return }
 
     # Check if current directory was removed
@@ -59,7 +59,7 @@ function gwtx {
           }
         }
         "select" {
-          $dest = __gwtx_cmd path
+          $dest = __kabu_cmd path
           if ($dest) {
             Set-Location $dest
           }
@@ -67,22 +67,22 @@ function gwtx {
       }
     }
   } else {
-    __gwtx_cmd @Args
+    __kabu_cmd @Args
   }
 }
 
-function __gwtx_trust_check {
+function __kabu_trust_check {
   try {
     $root = git rev-parse --show-toplevel 2>$null
   } catch {
-    $global:__gwtx_trust_root = ""
-    $global:__gwtx_trust_config_mtime = ""
-    $global:__gwtx_trust_state = ""
+    $global:__kabu_trust_root = ""
+    $global:__kabu_trust_config_mtime = ""
+    $global:__kabu_trust_state = ""
     return
   }
 
-  # Get .gwtx/config.yaml modification time
-  $config_path = "$root\.gwtx\config.yaml"
+  # Get .kabu/config.yaml modification time
+  $config_path = "$root\.kabu\config.yaml"
   $current_mtime = ""
   try {
     if (Test-Path $config_path) {
@@ -92,48 +92,48 @@ function __gwtx_trust_check {
     # If unable to get mtime, use empty string
   }
 
-  # Invalidate cache if repository changed or .gwtx/config.yaml was modified
-  if ($root -ne $global:__gwtx_trust_root -or $current_mtime -ne $global:__gwtx_trust_config_mtime) {
-    $global:__gwtx_trust_root = $root
-    $global:__gwtx_trust_config_mtime = $current_mtime
-    $global:__gwtx_trust_state = ""
+  # Invalidate cache if repository changed or .kabu/config.yaml was modified
+  if ($root -ne $global:__kabu_trust_root -or $current_mtime -ne $global:__kabu_trust_config_mtime) {
+    $global:__kabu_trust_root = $root
+    $global:__kabu_trust_config_mtime = $current_mtime
+    $global:__kabu_trust_state = ""
   }
 
-  & ::GWTX:: trust --check $root | Out-Null
+  & ::KABU:: trust --check $root | Out-Null
   if ($LASTEXITCODE -eq 0) {
-    $global:__gwtx_trust_state = "trusted"
+    $global:__kabu_trust_state = "trusted"
     return
   }
 
-  if ($global:__gwtx_trust_state -ne "untrusted") {
-    Write-Host "gwtx: hooks in .gwtx/config.yaml are not trusted. Run 'gwtx trust' to review them." -ForegroundColor Red
+  if ($global:__kabu_trust_state -ne "untrusted") {
+    Write-Host "kabu: hooks in .kabu/config.yaml are not trusted. Run 'kabu trust' to review them." -ForegroundColor Red
   }
-  $global:__gwtx_trust_state = "untrusted"
+  $global:__kabu_trust_state = "untrusted"
 }
 
-function __gwtx_location_changed {
-  __gwtx_trust_check
+function __kabu_location_changed {
+  __kabu_trust_check
 }
 
 if ($ExecutionContext.SessionState.InvokeCommand.LocationChangedAction) {
   $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction = [Delegate]::Combine(
     $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction,
-    [EventHandler[LocationChangedEventArgs]] { param([object] $s, [LocationChangedEventArgs] $e) __gwtx_location_changed }
+    [EventHandler[LocationChangedEventArgs]] { param([object] $s, [LocationChangedEventArgs] $e) __kabu_location_changed }
   )
 } else {
   $ExecutionContext.SessionState.InvokeCommand.LocationChangedAction =
-    [EventHandler[LocationChangedEventArgs]] { param([object] $s, [LocationChangedEventArgs] $e) __gwtx_location_changed }
+    [EventHandler[LocationChangedEventArgs]] { param([object] $s, [LocationChangedEventArgs] $e) __kabu_location_changed }
 }
 
 if ($function:prompt) {
   $origPrompt = $function:prompt
   function prompt {
-    __gwtx_trust_check
+    __kabu_trust_check
     & $origPrompt
   }
 } else {
   function prompt {
-    __gwtx_trust_check
+    __kabu_trust_check
     "PS $($executionContext.SessionState.Path.CurrentLocation)> "
   }
 }

@@ -12,7 +12,7 @@ fn test_jj_remove_basic() {
     let ws_path = repo.workspace_path("remove-ws");
 
     // Create a workspace
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws_path.to_str().unwrap()])
         .assert()
         .success();
@@ -21,7 +21,7 @@ fn test_jj_remove_basic() {
     assert!(ws_path.exists());
 
     // Remove the workspace (--force needed because jj workspaces have unpushed working-copy commit)
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", ws_path.to_str().unwrap(), "--force"])
         .assert()
         .success();
@@ -48,14 +48,14 @@ fn test_jj_remove_dry_run() {
     let ws_path = repo.workspace_path("remove-dry-run-ws");
 
     // Create a workspace
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws_path.to_str().unwrap()])
         .assert()
         .success();
     repo.register_workspace(ws_path.clone());
 
     // Remove with dry-run
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", ws_path.to_str().unwrap(), "--dry-run"])
         .assert()
         .success()
@@ -80,7 +80,7 @@ fn test_jj_remove_force() {
     let ws_path = repo.workspace_path("remove-force-ws");
 
     // Create a workspace
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws_path.to_str().unwrap()])
         .assert()
         .success();
@@ -91,7 +91,7 @@ fn test_jj_remove_force() {
         .expect("Failed to write file");
 
     // Remove with force should succeed
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", ws_path.to_str().unwrap(), "--force"])
         .assert()
         .success();
@@ -112,7 +112,7 @@ fn test_jj_remove_colocated() {
     let ws_path = repo.workspace_path("colocated-remove-ws");
 
     // Create a workspace in colocated repo
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws_path.to_str().unwrap()])
         .assert()
         .success();
@@ -121,7 +121,7 @@ fn test_jj_remove_colocated() {
     assert!(ws_path.exists());
 
     // Remove the workspace (--force needed because jj workspaces have unpushed working-copy commit)
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", ws_path.to_str().unwrap(), "--force"])
         .assert()
         .success();
@@ -142,14 +142,14 @@ fn test_jj_remove_quiet() {
     let ws_path = repo.workspace_path("remove-quiet-ws");
 
     // Create a workspace
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws_path.to_str().unwrap()])
         .assert()
         .success();
     repo.register_workspace(ws_path.clone());
 
     // Remove with quiet mode (--force needed because jj workspaces have unpushed working-copy commit)
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", ws_path.to_str().unwrap(), "--quiet", "--force"])
         .assert()
         .success()
@@ -172,13 +172,13 @@ fn test_jj_remove_multiple() {
     let ws2_path = repo.workspace_path("multi-remove-ws2");
 
     // Create two workspaces
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws1_path.to_str().unwrap()])
         .assert()
         .success();
     repo.register_workspace(ws1_path.clone());
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", ws2_path.to_str().unwrap()])
         .assert()
         .success();
@@ -188,12 +188,12 @@ fn test_jj_remove_multiple() {
     assert!(ws2_path.exists());
 
     // Remove both workspaces (--force needed because jj workspaces have unpushed working-copy commit)
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", ws1_path.to_str().unwrap(), "--force"])
         .assert()
         .success();
 
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", ws2_path.to_str().unwrap(), "--force"])
         .assert()
         .success();

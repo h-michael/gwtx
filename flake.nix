@@ -1,5 +1,5 @@
 {
-  description = "gwtx - git worktree extra";
+  description = "CLI tool to enhance git worktree and jj workspace with automated setup";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -13,7 +13,7 @@
       in
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
-          pname = "gwtx";
+          pname = "kabu";
           version = "0.5.0";
 
           src = ./.;
@@ -23,8 +23,8 @@
           };
 
           meta = with pkgs.lib; {
-            description = "CLI tool to enhance git worktree with automated setup tasks";
-            homepage = "https://github.com/h-michael/gwtx";
+            description = "CLI tool to enhance git worktree and jj workspace with automated setup";
+            homepage = "https://github.com/h-michael/kabu";
             license = with licenses; [ mit asl20 ];
             maintainers = [ "h-michael" ];
           };

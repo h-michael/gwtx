@@ -1,7 +1,7 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
 # Basic hooks examples
-# SECURITY: Hooks require explicit trust via `gwtx trust` before execution
+# SECURITY: Hooks require explicit trust via `kabu trust` before execution
 # PLATFORM: Hooks are currently supported on Unix-like systems (Linux, macOS) only
 
 # Pre-add hooks: Execute before creating worktree

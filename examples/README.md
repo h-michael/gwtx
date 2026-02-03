@@ -1,4 +1,4 @@
-# gwtx Configuration Examples
+# kabu Configuration Examples
 
 Example configuration files for various use cases. Browse through these examples to find patterns that fit your workflow.
 
@@ -69,7 +69,7 @@ hooks:
 
 ### JSON Schema
 
-The configuration format is validated against `schema/gwtx.schema.json`. You can use this with editors that support YAML schema validation (like VS Code with the YAML extension) for autocomplete and validation.
+The configuration format is validated against `schema/kabu.schema.json`. You can use this with editors that support YAML schema validation (like VS Code with the YAML extension) for autocomplete and validation.
 
 ## Hook Security
 
@@ -77,13 +77,13 @@ Hooks require explicit trust before execution:
 
 ```bash
 # Review and trust hooks
-gwtx trust
+kabu trust
 
 # Revoke trust
-gwtx untrust
+kabu untrust
 
 # List all trusted repositories
-gwtx untrust --list
+kabu untrust --list
 ```
 
 Hooks are only supported on Unix-like systems (Linux, macOS). Windows users should use Git Bash/WSL or the `--no-setup` flag.

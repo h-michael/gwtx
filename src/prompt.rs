@@ -16,7 +16,7 @@ fn clear_screen() -> Result<()> {
     use std::io::Write;
 
     // Write to /dev/tty instead of stdout to avoid interfering with command output
-    // This allows `gwtx path` to work correctly in command substitution
+    // This allows `kabu path` to work correctly in command substitution
     let mut tty = OpenOptions::new()
         .write(true)
         .open("/dev/tty")
@@ -75,7 +75,7 @@ pub(crate) fn prompt_trust_hooks(repo_root: &Path) -> Result<bool> {
             .map_err(|e| Error::Internal(format!("Failed to write to /dev/tty: {e}")))?;
         writeln!(
             tty,
-            "Once trusted, hooks will run automatically on future `gwtx add/remove` commands"
+            "Once trusted, hooks will run automatically on future `kabu add/remove` commands"
         )
         .map_err(|e| Error::Internal(format!("Failed to write to /dev/tty: {e}")))?;
         write!(tty, "Proceed? [y/N]: ")
@@ -99,7 +99,7 @@ pub(crate) fn prompt_trust_hooks(repo_root: &Path) -> Result<bool> {
         }
 
         println!("Trust these hooks for {}?", repo_root.display());
-        println!("Once trusted, hooks will run automatically on future `gwtx add/remove` commands");
+        println!("Once trusted, hooks will run automatically on future `kabu add/remove` commands");
         print!("Proceed? [y/N]: ");
         io::stdout()
             .flush()

@@ -1,6 +1,6 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
-# Basic gwtx configuration examples
+# Basic kabu configuration examples
 # This file demonstrates the three main operation types: mkdir, link, and copy
 
 # Global options

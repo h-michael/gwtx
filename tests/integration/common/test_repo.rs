@@ -36,21 +36,21 @@ impl TestRepo {
         }
     }
 
-    /// Create a new repository with the given .gwtx/config.yaml config
+    /// Create a new repository with the given .kabu/config.yaml config
     pub fn with_config(yaml: &str) -> Self {
         let repo = Self::new();
         repo.write_config(yaml);
         repo
     }
 
-    /// Write .gwtx/config.yaml configuration file
+    /// Write .kabu/config.yaml configuration file
     pub fn write_config(&self, yaml: &str) {
-        let gwtx_dir = self.repo_path.join(".gwtx");
-        fs::create_dir_all(&gwtx_dir).expect("Failed to create .gwtx directory");
-        let config_path = gwtx_dir.join("config.yaml");
+        let kabu_dir = self.repo_path.join(".kabu");
+        fs::create_dir_all(&kabu_dir).expect("Failed to create .kabu directory");
+        let config_path = kabu_dir.join("config.yaml");
         fs::write(&config_path, yaml).expect("Failed to write config");
-        run_git(&self.repo_path, &["add", ".gwtx/config.yaml"]);
-        run_git(&self.repo_path, &["commit", "-m", "Add gwtx config"]);
+        run_git(&self.repo_path, &["add", ".kabu/config.yaml"]);
+        run_git(&self.repo_path, &["commit", "-m", "Add kabu config"]);
     }
 
     /// Create a file in the repository
@@ -69,20 +69,20 @@ impl TestRepo {
         run_git(&self.repo_path, &["commit", "-m", message]);
     }
 
-    /// Get a gwtx Command configured for this repository
-    pub fn gwtx(&self) -> Command {
-        let mut cmd = Command::cargo_bin("gwtx").expect("Failed to find gwtx binary");
+    /// Get a kabu Command configured for this repository
+    pub fn kabu(&self) -> Command {
+        let mut cmd = Command::cargo_bin("kabu").expect("Failed to find kabu binary");
         cmd.current_dir(&self.repo_path);
         // Use isolated trust directory in tests
-        if let Ok(trust_dir) = std::env::var("GWTX_TRUST_DIR") {
-            cmd.env("GWTX_TRUST_DIR", trust_dir);
+        if let Ok(trust_dir) = std::env::var("KABU_TRUST_DIR") {
+            cmd.env("KABU_TRUST_DIR", trust_dir);
         }
         cmd
     }
 
     /// Trust the configuration (auto-accept with --yes flag)
     pub fn trust_config(&self) {
-        self.gwtx().args(["trust", "--yes"]).assert().success();
+        self.kabu().args(["trust", "--yes"]).assert().success();
     }
 
     /// Get the repository path

@@ -1,8 +1,8 @@
 //! Change directory command implementation.
 //!
-//! This command requires shell integration (`gwtx init`). Without shell integration,
+//! This command requires shell integration (`kabu init`). Without shell integration,
 //! it returns an error with instructions. The actual directory change is handled
-//! by the shell wrapper function that calls `gwtx path` and `cd`.
+//! by the shell wrapper function that calls `kabu path` and `cd`.
 
 use crate::error::{Error, Result};
 

@@ -590,36 +590,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gwtx"
-version = "0.5.0"
-dependencies = [
- "assert_cmd",
- "chrono",
- "clap",
- "clap_complete",
- "clap_mangen",
- "crossterm",
- "ctrlc",
- "dirs",
- "globset",
- "indexmap",
- "libc",
- "nucleo",
- "owo-colors",
- "predicates",
- "ratatui",
- "schemars",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tempfile",
- "thiserror",
- "unicode-width",
- "walkdir",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -727,6 +697,36 @@ checksum = "8c942ebf8e95485ca0d52d97da7c5a2c387d0e7f0ba4c35e93bfcaee045955b3"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "kabu"
+version = "0.5.0"
+dependencies = [
+ "assert_cmd",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "clap_mangen",
+ "crossterm",
+ "ctrlc",
+ "dirs",
+ "globset",
+ "indexmap",
+ "libc",
+ "nucleo",
+ "owo-colors",
+ "predicates",
+ "ratatui",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "unicode-width",
+ "walkdir",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 //! Hook trust management system
 //!
-//! This module manages whether git hooks in `.gwtx/config.yaml` have been explicitly reviewed
+//! This module manages whether git hooks in `.kabu/config.yaml` have been explicitly reviewed
 //! and trusted by the user. Trust is based on a SHA256 hash of the hook commands and
 //! descriptions, combined with the primary worktree path.
 //!
@@ -12,22 +12,22 @@
 //! feature branches), they all trust the same hooks without re-approval.
 //!
 //! **Nested Directory Structure**: Trust files are stored in directories named after the
-//! primary worktree path (e.g., `~/.local/share/gwtx/trusted/-foo-bar-baz/{hash}.yaml`).
+//! primary worktree path (e.g., `~/.local/share/kabu/trusted/-foo-bar-baz/{hash}.yaml`).
 //! This structure provides performance benefits: when many repositories are trusted, the
 //! nested directory avoids scanning hundreds of files in a single flat directory.
 //!
 //! **Automatic Cleanup of Old Files**: When hooks are re-trusted with new content,
 //! all previous trust files for that primary worktree are deleted. This prevents
-//! reversion attacks where an attacker could restore old `.gwtx/config.yaml` and use previously
+//! reversion attacks where an attacker could restore old `.kabu/config.yaml` and use previously
 //! trusted hooks. Only the current hooks hash is valid for a given primary worktree.
 //!
 //! **Path Verification**: The main_worktree_path is stored in the trust file and
 //! verified during `is_trusted()`. This prevents symlink attacks where an attacker could
 //! replace the worktree directory with a symlink to a different path with old trusted hooks.
 //!
-//! **Empty Hooks Are Implicitly Trusted**: If `.gwtx/config.yaml` has no hooks (or is empty),
+//! **Empty Hooks Are Implicitly Trusted**: If `.kabu/config.yaml` has no hooks (or is empty),
 //! `is_trusted()` returns true immediately without checking disk. Rationale: no hooks means
-//! nothing to trust; the user cannot create a `.gwtx/config.yaml` without hooks and then claim
+//! nothing to trust; the user cannot create a `.kabu/config.yaml` without hooks and then claim
 //! hooks exist.
 
 use crate::config::{Config, ConfigSnapshot};
@@ -44,7 +44,7 @@ use sha2::{Digest, Sha256};
 #[cfg(all(test, feature = "impure-test"))]
 use crate::config::HookEntry;
 
-const TRUST_DIR_NAME: &str = "gwtx/trusted";
+const TRUST_DIR_NAME: &str = "kabu/trusted";
 const TRUST_VERSION: u32 = 1;
 
 #[cfg(all(test, feature = "impure-test"))]
@@ -71,7 +71,7 @@ pub(crate) struct TrustEntry {
 
 /// Get trust storage directory with versioning support.
 /// Uses XDG_DATA_HOME or falls back to ~/.local/share on Linux
-/// Path format: ~/.local/share/gwtx/trusted/v1/
+/// Path format: ~/.local/share/kabu/trusted/v1/
 fn trust_dir() -> Result<PathBuf> {
     #[cfg(all(test, feature = "impure-test"))]
     {
@@ -79,7 +79,7 @@ fn trust_dir() -> Result<PathBuf> {
             return Ok(path);
         }
     }
-    if let Some(path) = std::env::var_os("GWTX_TRUST_DIR") {
+    if let Some(path) = std::env::var_os("KABU_TRUST_DIR") {
         return Ok(PathBuf::from(path));
     }
     let base = dirs::data_dir().ok_or(Error::TrustStorageNotFound)?;
@@ -284,18 +284,18 @@ pub(crate) fn read_trust_entry(main_worktree_path: &Path) -> Result<Option<Trust
 
 /// Trust configuration for a repository by marking it as reviewed and approved.
 ///
-/// Creates a trust file at `~/.local/share/gwtx/trusted/v1/{primary-worktree-dir}/{hash}.yaml`
+/// Creates a trust file at `~/.local/share/kabu/trusted/v1/{primary-worktree-dir}/{hash}.yaml`
 /// containing the main_worktree_path, timestamp, and full configuration snapshot.
 ///
 /// **Automatic Cleanup**: Deletes all old trust files in the same directory before creating
 /// the new one. This prevents reversion attacks where an attacker could restore an old
-/// `.gwtx/config.yaml` and use previously trusted configuration with different content.
+/// `.kabu/config.yaml` and use previously trusted configuration with different content.
 ///
 /// Reversion Attack Scenario (prevented by this cleanup):
 /// 1. User trusts config (file hash=ABC123 created)
-/// 2. Attacker modifies `.gwtx/config.yaml` with dangerous commands
-/// 3. User runs `gwtx trust` again with new content (file hash=XYZ789 created)
-/// 4. Attacker reverts `.gwtx/config.yaml` to original content (hash=ABC123)
+/// 2. Attacker modifies `.kabu/config.yaml` with dangerous commands
+/// 3. User runs `kabu trust` again with new content (file hash=XYZ789 created)
+/// 4. Attacker reverts `.kabu/config.yaml` to original content (hash=ABC123)
 /// 5. OLD BEHAVIOR: hash=ABC123 still exists, config trusted without re-review
 /// 6. NEW BEHAVIOR: hash=ABC123 was deleted in step 3, reversion fails
 pub(crate) fn trust(main_worktree_path: &Path, config: &Config) -> Result<()> {
@@ -318,7 +318,7 @@ pub(crate) fn trust(main_worktree_path: &Path, config: &Config) -> Result<()> {
 
     // Remove old trust files for this main_worktree_path (before saving new one).
     // Security: Prevents reversion attacks by ensuring only the current config hash
-    // is valid for this primary worktree. If .gwtx/config.yaml is reverted to an older
+    // is valid for this primary worktree. If .kabu/config.yaml is reverted to an older
     // version, the old hash file won't exist and re-trust will be required.
     if trust_repo_path.exists() {
         for entry in fs::read_dir(&trust_repo_path)?.flatten() {
@@ -380,7 +380,7 @@ pub(crate) fn untrust(main_worktree_path: &Path, config: &Config) -> Result<bool
 
 /// List all trusted repository hooks.
 ///
-/// Traverses the nested directory structure at `~/.local/share/gwtx/trusted/`
+/// Traverses the nested directory structure at `~/.local/share/kabu/trusted/`
 /// and returns all TrustEntry objects found. Each directory under `trusted/` represents
 /// a different main_worktree_path, and each `.yaml` file within that directory represents
 /// a different trusted hook configuration.

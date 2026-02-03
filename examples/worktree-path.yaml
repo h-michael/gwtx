@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
 # Worktree path configuration examples
 # Configure how worktree paths are suggested in interactive mode
@@ -11,8 +11,8 @@ worktree:
 
 # Example 2: Custom template with branch variable
 # worktree:
-#   path_template: ../gwtx-{{branch}}-
-# Result for branch "feature/foo": ../gwtx-feature/foo-
+#   path_template: ../kabu-{{branch}}-
+# Result for branch "feature/foo": ../kabu-feature/foo-
 
 # Example 3: Full template with repo name and branch
 # worktree:

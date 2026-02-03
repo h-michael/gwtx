@@ -1,6 +1,6 @@
 /// Minimal configuration with no operations
 pub const MINIMAL_CONFIG: &str = r#"
-# Minimal gwtx configuration
+# Minimal kabu configuration
 "#;
 
 /// Basic configuration with mkdir, link, and copy operations

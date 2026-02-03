@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "gwtx configuration",
-  "description": "Configuration file for gwtx (git worktree extra)",
+  "title": "kabu configuration",
+  "description": "Configuration file for kabu",
   "type": "object",
   "properties": {
     "auto_cd": {

@@ -1,4 +1,4 @@
-# Dockerfile for gwtx integration tests
+# Dockerfile for kabu integration tests
 # Supports rootless Docker with UID/GID mapping
 
 FROM rust:1.88-bookworm
@@ -20,7 +20,7 @@ COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Set environment variables for isolated trust directory
-ENV GWTX_TRUST_DIR=/tmp/gwtx-trusted
+ENV KABU_TRUST_DIR=/tmp/kabu-trusted
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["cargo", "test", "--features", "impure-test"]

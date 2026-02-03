@@ -7,7 +7,7 @@ fn test_basic_worktree_remove() {
     let worktree_path = repo.worktree_path("to-remove");
 
     // First create a worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["add", worktree_path.to_str().unwrap(), "-b", "to-remove"])
         .assert()
         .success();
@@ -16,7 +16,7 @@ fn test_basic_worktree_remove() {
     assert!(worktree_path.exists());
 
     // Now remove it
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", worktree_path.to_str().unwrap()])
         .assert()
         .success();
@@ -31,7 +31,7 @@ fn test_remove_dry_run() {
     let worktree_path = repo.worktree_path("dry-remove");
 
     // Create a worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["add", worktree_path.to_str().unwrap(), "-b", "dry-remove"])
         .assert()
         .success();
@@ -39,7 +39,7 @@ fn test_remove_dry_run() {
     repo.register_worktree(worktree_path.clone());
 
     // Try dry-run remove
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", "--dry-run", worktree_path.to_str().unwrap()])
         .assert()
         .success()
@@ -55,7 +55,7 @@ fn test_remove_with_uncommitted_changes() {
     let worktree_path = repo.worktree_path("uncommitted");
 
     // Create a worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["add", worktree_path.to_str().unwrap(), "-b", "uncommitted"])
         .assert()
         .success();
@@ -67,7 +67,7 @@ fn test_remove_with_uncommitted_changes() {
         .expect("Failed to write file");
 
     // Try to remove - should fail without force
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", worktree_path.to_str().unwrap()])
         .assert()
         .failure()
@@ -83,7 +83,7 @@ fn test_remove_force_with_uncommitted_changes() {
     let worktree_path = repo.worktree_path("force-uncommitted");
 
     // Create a worktree
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -100,7 +100,7 @@ fn test_remove_force_with_uncommitted_changes() {
         .expect("Failed to write file");
 
     // Force remove
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", "--force", worktree_path.to_str().unwrap()])
         .assert()
         .success();
@@ -114,7 +114,7 @@ fn test_cannot_remove_main_worktree() {
     let repo = TestRepo::with_config(MINIMAL_CONFIG);
 
     // Try to remove the main worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", repo.path().to_str().unwrap()])
         .assert()
         .failure()
@@ -127,7 +127,7 @@ fn test_remove_quiet_mode() {
     let worktree_path = repo.worktree_path("quiet-remove");
 
     // Create a worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["add", worktree_path.to_str().unwrap(), "-b", "quiet-remove"])
         .assert()
         .success();
@@ -135,7 +135,7 @@ fn test_remove_quiet_mode() {
     repo.register_worktree(worktree_path.clone());
 
     // Remove with quiet mode
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", "--quiet", worktree_path.to_str().unwrap()])
         .assert()
         .success()
@@ -152,20 +152,20 @@ fn test_remove_multiple_worktrees() {
     let wt2_path = repo.worktree_path("multi-2");
 
     // Create two worktrees
-    repo.gwtx()
+    repo.kabu()
         .args(["add", wt1_path.to_str().unwrap(), "-b", "multi-1"])
         .assert()
         .success();
     repo.register_worktree(wt1_path.clone());
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", wt2_path.to_str().unwrap(), "-b", "multi-2"])
         .assert()
         .success();
     repo.register_worktree(wt2_path.clone());
 
     // Remove both
-    repo.gwtx()
+    repo.kabu()
         .args([
             "remove",
             wt1_path.to_str().unwrap(),

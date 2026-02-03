@@ -4,7 +4,7 @@
 # GitHub repository information (used for generating URLs in templates)
 [remote.github]
 owner = "h-michael"
-repo = "gwtx"
+repo = "kabu"
 
 [changelog]
 # Changelog header section
@@ -69,7 +69,7 @@ split_commits = false
 # Convert issue/PR numbers to links
 commit_preprocessors = [
     # Convert (#123) or (fix #123) to PR links
-    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/h-michael/gwtx/pull/${2}))" },
+    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/h-michael/kabu/pull/${2}))" },
 ]
 
 # Commit message parsing rules

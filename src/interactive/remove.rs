@@ -24,7 +24,7 @@ pub(crate) struct SafetyWarning {
 pub(crate) fn run_remove_selection(workspaces: &[WorkspaceInfo]) -> Result<Vec<PathBuf>> {
     if !prompt::is_interactive() {
         return Err(Error::InteractiveRequired {
-            command: "gwtx remove -i",
+            command: "kabu remove -i",
         });
     }
 
@@ -47,7 +47,7 @@ pub(crate) fn run_remove_selection(workspaces: &[WorkspaceInfo]) -> Result<Vec<P
 pub(crate) fn run_remove_confirmation(warnings: &[SafetyWarning]) -> Result<bool> {
     if !prompt::is_interactive() {
         return Err(Error::InteractiveRequired {
-            command: "gwtx remove -i",
+            command: "kabu remove -i",
         });
     }
     let mut details = Vec::new();

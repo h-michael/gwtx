@@ -5,25 +5,23 @@ use clap_complete::Shell;
 
 /// CLI arguments.
 #[derive(Parser, Debug)]
-#[command(name = "gwtx")]
-#[command(
-    about = "git/jj worktree extra - enhance git worktree and jj workspace with automated setup"
-)]
+#[command(name = "kabu")]
+#[command(about = "Enhance git worktree and jj workspace with automated setup")]
 #[command(version = VERSION_STRING)]
 #[command(after_help = "\
 VCS SUPPORT:
-    gwtx automatically detects and supports:
+    kabu automatically detects and supports:
     - Git repositories (uses git worktree commands)
     - jj (Jujutsu) repositories (uses jj workspace commands)
     - Colocated repositories (jj on top of git)
 
 CONFIGURATION:
-    gwtx reads .gwtx/config.yaml from the repository root for setup instructions.
+    kabu reads .kabu/config.yaml from the repository root for setup instructions.
 
 COLOR OUTPUT:
-    gwtx uses colored output for better readability. Control with:
+    kabu uses colored output for better readability. Control with:
 
-    --color=always    Always use colors (useful when piping: gwtx list --color=always | less -R)
+    --color=always    Always use colors (useful when piping: kabu list --color=always | less -R)
     --color=never     Never use colors (or use --no-color)
     --color=auto      Auto-detect terminal (default)
 
@@ -33,50 +31,50 @@ COLOR OUTPUT:
     Priority: --color flag > NO_COLOR env > terminal detection
 
 EXAMPLES:
-    gwtx add ../new-worktree-path
-        Create worktree and run setup from .gwtx/config.yaml
+    kabu add ../new-worktree-path
+        Create worktree and run setup from .kabu/config.yaml
 
-    gwtx add -b new-branch-name ../new-worktree-path
+    kabu add -b new-branch-name ../new-worktree-path
         Create new branch and worktree with setup
 
-    gwtx add --i
+    kabu add --i
         Select branch and path interactively
 
-    gwtx add --dry-run ../test
+    kabu add --dry-run ../test
         Preview what would be done without executing
 
-    gwtx add --no-setup ../quick
+    kabu add --no-setup ../quick
         Create worktree without running setup
 
-    gwtx remove ../worktree-path
+    kabu remove ../worktree-path
         Remove worktree with safety checks
 
-    gwtx remove --i
+    kabu remove --i
         Select worktrees to remove interactively
 
-    gwtx remove --dry-run ../test
+    kabu remove --dry-run ../test
         Preview what would be removed without executing
 
-    gwtx trust
-        Trust hooks in .gwtx/config.yaml (required for hook execution)
+    kabu trust
+        Trust hooks in .kabu/config.yaml (required for hook execution)
 
-    gwtx untrust --list
+    kabu untrust --list
         List all trusted repositories
 
-    gwtx cd
+    kabu cd
         Select a worktree and cd to it (requires shell integration)
 
-    cd \"$(gwtx path)\"
+    cd \"$(kabu path)\"
         Select a worktree and print its path (works without shell integration)
 
-    eval \"$(gwtx init bash)\"
+    eval \"$(kabu init bash)\"
         Enable shell completions and trust warnings")]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Command,
 }
 
-const VERSION_STRING: &str = env!("GWTX_VERSION_LABEL");
+const VERSION_STRING: &str = env!("KABU_VERSION_LABEL");
 
 /// Available subcommands.
 #[derive(Subcommand, Debug)]
@@ -98,13 +96,13 @@ pub(crate) enum Command {
     /// Change directory to a selected worktree/workspace (requires shell integration)
     Cd,
 
-    /// Manage .gwtx/config.yaml configuration
+    /// Manage .kabu/config.yaml configuration
     Config(ConfigArgs),
 
-    /// Trust hooks in .gwtx/config.yaml for the current repository
+    /// Trust hooks in .kabu/config.yaml for the current repository
     Trust(TrustArgs),
 
-    /// Revoke trust for hooks in .gwtx/config.yaml
+    /// Revoke trust for hooks in .kabu/config.yaml
     Untrust(UntrustArgs),
 
     /// Generate shell completion script
@@ -184,11 +182,11 @@ GLOB PATTERNS:
 
 HOOKS:
     Hooks run custom commands before/after worktree operations.
-    Require explicit trust via 'gwtx trust' before execution.
+    Require explicit trust via 'kabu trust' before execution.
 
     Platform support: Unix-like systems (Linux, macOS) and Windows.
     On Windows, hooks run via an auto-detected shell (pwsh, powershell,
-    Git Bash, or cmd). Override with --hook-shell or GWTHOOK_SHELL.
+    Git Bash, or cmd). Override with --hook-shell or KABUHOOK_SHELL.
 
     Format:
         hooks:
@@ -196,11 +194,11 @@ HOOKS:
             - command: ...       # Required: shell command to execute
               description: ...   # Optional: human-readable description
 
-    Execution order (gwtx add):
+    Execution order (kabu add):
         1. pre_add (repo_root) → 2. git worktree add →
         3. mkdir/link/copy → 4. post_add (worktree_path)
 
-    Execution order (gwtx remove):
+    Execution order (kabu remove):
         1. pre_remove (worktree_path) → 2. git worktree remove →
         3. post_remove (repo_root)
 
@@ -217,17 +215,17 @@ pub(crate) struct ConfigArgs {
 /// Config subcommands.
 #[derive(Subcommand, Debug)]
 pub(crate) enum ConfigCommand {
-    /// Validate .gwtx/config.yaml configuration
+    /// Validate .kabu/config.yaml configuration
     Validate,
     /// Generate JSON Schema for configuration
     Schema,
     /// Create a new configuration file
     New {
         /// Create global config at:
-        ///   - $XDG_CONFIG_HOME/gwtx/config.yaml (if XDG_CONFIG_HOME is set)
-        ///   - ~/.config/gwtx/config.yaml (Linux)
-        ///   - ~/Library/Application Support/gwtx/config.yaml (macOS)
-        ///   - %APPDATA%\gwtx\config.yaml (Windows)
+        ///   - $XDG_CONFIG_HOME/kabu/config.yaml (if XDG_CONFIG_HOME is set)
+        ///   - ~/.config/kabu/config.yaml (Linux)
+        ///   - ~/Library/Application Support/kabu/config.yaml (macOS)
+        ///   - %APPDATA%\kabu\config.yaml (Windows)
         #[arg(short, long, verbatim_doc_comment)]
         global: bool,
 
@@ -239,11 +237,11 @@ pub(crate) enum ConfigCommand {
         #[arg(short = 'O', long = "override")]
         override_existing: bool,
 
-        /// Create .gwtx/.gitignore to exclude config from git
+        /// Create .kabu/.gitignore to exclude config from git
         #[arg(long)]
         with_gitignore: bool,
 
-        /// Do not create .gwtx/.gitignore (skip prompt)
+        /// Do not create .kabu/.gitignore (skip prompt)
         #[arg(long, conflicts_with = "with_gitignore")]
         without_gitignore: bool,
     },
@@ -263,19 +261,19 @@ VCS SUPPORT:
     - jj:  Creates workspace using `jj workspace add`
 
 EXAMPLES:
-    gwtx add ../new-worktree-path
-        Create worktree/workspace and run setup from .gwtx/config.yaml
+    kabu add ../new-worktree-path
+        Create worktree/workspace and run setup from .kabu/config.yaml
 
-    gwtx add -b new-branch-name ../new-worktree-path
+    kabu add -b new-branch-name ../new-worktree-path
         Create new branch (git) or bookmark (jj) with worktree/workspace
 
-    gwtx add --interactive
+    kabu add --interactive
         Select branch and path interactively
 
-    gwtx add --dry-run ../test
+    kabu add --dry-run ../test
         Preview what would be done without executing
 
-    gwtx add --no-setup ../quick
+    kabu add --no-setup ../quick
         Create worktree/workspace without running setup
 
 CONFLICT MODES:
@@ -285,8 +283,8 @@ CONFLICT MODES:
     backup     Rename existing file with .bak suffix before creating new one
 
 ENVIRONMENT VARIABLES:
-    GWTX_ON_CONFLICT    Default conflict resolution mode (e.g., GWTX_ON_CONFLICT=backup)
-    GWTHOOK_SHELL       Windows-only hook shell override (pwsh, powershell, bash, cmd, wsl)")]
+    KABU_ON_CONFLICT    Default conflict resolution mode (e.g., KABU_ON_CONFLICT=backup)
+    KABUHOOK_SHELL      Windows-only hook shell override (pwsh, powershell, bash, cmd, wsl)")]
 pub(crate) struct AddArgs {
     /// Path for the new worktree/workspace (required unless --interactive)
     pub path: Option<PathBuf>,
@@ -294,26 +292,26 @@ pub(crate) struct AddArgs {
     /// Branch or commit to checkout (git) / revision (jj)
     pub commitish: Option<String>,
 
-    // --- gwtx Options ---
+    // --- kabu Options ---
     /// Interactive mode: select branch and path interactively
-    #[arg(short, long, help_heading = "gwtx Options")]
+    #[arg(short, long, help_heading = "kabu Options")]
     pub interactive: bool,
 
     /// How to handle conflicts: abort, skip, overwrite, backup
     #[arg(
         long,
         value_name = "MODE",
-        help_heading = "gwtx Options",
-        env = "GWTX_ON_CONFLICT"
+        help_heading = "kabu Options",
+        env = "KABU_ON_CONFLICT"
     )]
     pub on_conflict: Option<OnConflictArg>,
 
     /// Preview actions without executing
-    #[arg(long, help_heading = "gwtx Options")]
+    #[arg(long, help_heading = "kabu Options")]
     pub dry_run: bool,
 
-    /// Skip .gwtx/config.yaml setup, run worktree/workspace add only
-    #[arg(long, help_heading = "gwtx Options")]
+    /// Skip .kabu/config.yaml setup, run worktree/workspace add only
+    #[arg(long, help_heading = "kabu Options")]
     pub no_setup: bool,
 
     /// Windows-only: select hook shell (pwsh, powershell, bash, cmd, wsl)
@@ -321,7 +319,7 @@ pub(crate) struct AddArgs {
     #[arg(
         long,
         value_name = "SHELL",
-        help_heading = "gwtx Options",
+        help_heading = "kabu Options",
         value_parser = [
             "pwsh",
             "powershell",
@@ -413,23 +411,23 @@ VCS SUPPORT:
     - jj:  Forgets workspace using `jj workspace forget`
 
 EXAMPLES:
-    gwtx remove ../target-worktree-path
+    kabu remove ../target-worktree-path
         Remove worktree/workspace with safety checks
 
-    gwtx remove --i
+    kabu remove --i
         Select worktrees/workspaces to remove interactively
 
-    gwtx remove --current
+    kabu remove --current
         Remove the worktree/workspace containing the current directory
 
-    gwtx remove --dry-run ../target-worktree-path
+    kabu remove --dry-run ../target-worktree-path
         Preview what would be removed without executing
 
-    gwtx remove --force ../target-worktree-path
+    kabu remove --force ../target-worktree-path
         Force removal (skip safety checks and confirmation)
 
 SAFETY CHECKS:
-    By default, gwtx remove warns about:
+    By default, kabu remove warns about:
     - Uncommitted changes (modified/staged files)
     - Unpushed commits (git) or commits not on remote bookmarks (jj)
 
@@ -438,17 +436,17 @@ pub(crate) struct RemoveArgs {
     /// Worktree/workspace paths to remove (required unless --interactive or --current)
     pub paths: Vec<PathBuf>,
 
-    // --- gwtx Options ---
+    // --- kabu Options ---
     /// Interactive mode: select worktrees/workspaces to remove
-    #[arg(short, long, help_heading = "gwtx Options")]
+    #[arg(short, long, help_heading = "kabu Options")]
     pub interactive: bool,
 
     /// Remove the worktree/workspace containing the current directory
-    #[arg(short = 'c', long, help_heading = "gwtx Options")]
+    #[arg(short = 'c', long, help_heading = "kabu Options")]
     pub current: bool,
 
     /// Preview actions without executing
-    #[arg(long, help_heading = "gwtx Options")]
+    #[arg(long, help_heading = "kabu Options")]
     pub dry_run: bool,
 
     /// Windows-only: select hook shell (pwsh, powershell, bash, cmd, wsl)
@@ -456,7 +454,7 @@ pub(crate) struct RemoveArgs {
     #[arg(
         long,
         value_name = "SHELL",
-        help_heading = "gwtx Options",
+        help_heading = "kabu Options",
         value_parser = [
             "pwsh",
             "powershell",
@@ -513,16 +511,16 @@ COLUMNS:
     - Status: Uncommitted changes indicator
 
 EXAMPLES:
-    gwtx list
+    kabu list
         List all worktrees/workspaces with detailed information
 
-    gwtx list --header
+    kabu list --header
         Show header row with column names
 
-    gwtx list --path-only
+    kabu list --path-only
         List only paths (useful for scripting)
 
-    gwtx ls -p --header
+    kabu ls -p --header
         Combine options using the short alias")]
 pub(crate) struct ListArgs {
     /// Show only worktree/workspace paths
@@ -554,44 +552,44 @@ SECURITY:
     Hooks allow running custom commands before/after worktree operations.
     For security, hooks require explicit trust before execution.
 
-    Trust is stored in: ~/.local/share/gwtx/trusted/
+    Trust is stored in: ~/.local/share/kabu/trusted/
     Each repository's hooks are identified by a SHA256 hash.
 
-    If hooks are modified in .gwtx/config.yaml, you must re-trust them.
+    If hooks are modified in .kabu/config.yaml, you must re-trust them.
 
 HOOKS:
     Platform support: Unix-like systems (Linux, macOS) and Windows.
     On Windows, hooks run via an auto-detected shell (pwsh, powershell,
-    Git Bash, or cmd). Override with --hook-shell or GWTHOOK_SHELL.
+    Git Bash, or cmd). Override with --hook-shell or KABUHOOK_SHELL.
 
     pre_add      Run before worktree creation (in repo_root)
     post_add     Run after worktree creation (in worktree_path)
     pre_remove   Run before worktree removal (in worktree_path)
     post_remove  Run after worktree removal (in repo_root)
 
-    Execution order (gwtx add):
+    Execution order (kabu add):
       1. pre_add → 2. git worktree add → 3. mkdir/link/copy → 4. post_add
 
-    Execution order (gwtx remove):
+    Execution order (kabu remove):
       1. pre_remove → 2. git worktree remove → 3. post_remove
 
-    Hooks can use template variables (see gwtx config for details):
+    Hooks can use template variables (see kabu config for details):
     {{worktree_path}}, {{worktree_name}}, {{branch}}, {{repo_root}}
 
 EXAMPLES:
-    gwtx trust
-        Trust hooks in .gwtx/config.yaml for the current repository
+    kabu trust
+        Trust hooks in .kabu/config.yaml for the current repository
 
-    gwtx trust --yes
+    kabu trust --yes
         Trust hooks without prompting
 
-    gwtx trust --show
+    kabu trust --show
         Show hooks and trust status without trusting
 
-    gwtx trust --check
+    kabu trust --check
         Exit 0 if hooks are trusted, 1 if trust is required
 
-    gwtx trust /path/to/repo
+    kabu trust /path/to/repo
         Trust hooks for a specific repository")]
 pub(crate) struct TrustArgs {
     /// Path to repository (defaults to current directory)
@@ -627,61 +625,61 @@ pub(crate) struct TrustArgs {
 #[derive(Parser, Debug)]
 #[command(after_help = "\
 SHELL INTEGRATION:
-    gwtx init enables shell integration features:
-    - Shell completions for all gwtx commands and options
-    - gwtx cd command for interactive worktree changing
+    kabu init enables shell integration features:
+    - Shell completions for all kabu commands and options
+    - kabu cd command for interactive worktree changing
     - Automatic trust warnings when entering directories with untrusted hooks
 
 INSTALLATION:
     Add to your shell configuration file:
 
     Bash (~/.bashrc or ~/.bash_profile):
-      eval \"$(gwtx init bash)\"
+      eval \"$(kabu init bash)\"
 
     Zsh (~/.zshrc):
-      eval \"$(gwtx init zsh)\"
+      eval \"$(kabu init zsh)\"
 
     Fish (~/.config/fish/config.fish):
-      gwtx init fish | source
+      kabu init fish | source
 
     PowerShell (profile, open with: $PROFILE):
-      Invoke-Expression (& gwtx init powershell | Out-String)
+      Invoke-Expression (& kabu init powershell | Out-String)
 
     Elvish (~/.config/elvish/rc.elv):
-      eval (gwtx init elvish | slurp)
+      eval (kabu init elvish | slurp)
 
 FEATURES:
     Shell Completions
-        Provides intelligent tab completion for gwtx commands and options.
+        Provides intelligent tab completion for kabu commands and options.
         Works across all supported shells.
 
-    gwtx cd Command
+    kabu cd Command
         Interactive fuzzy finder to select and cd to a worktree.
         Uses ratatui-based UI across platforms
 
-        Note: gwtx cd requires shell integration.
-        Without shell integration, use: cd \"$(gwtx path)\"
+        Note: kabu cd requires shell integration.
+        Without shell integration, use: cd \"$(kabu path)\"
 
     Trust Warnings
-        When entering a directory with untrusted hooks, gwtx displays a warning.
-        Review and trust hooks using: gwtx trust
+        When entering a directory with untrusted hooks, kabu displays a warning.
+        Review and trust hooks using: kabu trust
 
 EXAMPLES:
     # Show init script for bash (add to ~/.bashrc)
-    gwtx init bash
+    kabu init bash
 
     # Show init script for zsh (add to ~/.zshrc)
-    gwtx init zsh
+    kabu init zsh
 
     # Show full init script (used by shell config, not for manual viewing)
-    gwtx init bash --print-full-init
+    kabu init bash --print-full-init
 
 TROUBLESHOOTING:
     If shell integration doesn't work after installation:
     1. Restart your shell or source the config file manually
-    2. Verify the command is in your shell PATH: command -v gwtx
+    2. Verify the command is in your shell PATH: command -v kabu
     3. Check shell config file was updated correctly
-    4. Review shell-specific documentation: gwtx help init")]
+    4. Review shell-specific documentation: kabu help init")]
 pub(crate) struct InitArgs {
     /// Shell to generate init script for
     pub shell: Shell,
@@ -698,16 +696,16 @@ VCS SUPPORT:
     Works with both git worktree and jj workspace.
 
 EXAMPLES:
-    gwtx path
+    kabu path
         Select a worktree/workspace interactively and print its path
 
-    gwtx path --main
+    kabu path --main
         Print the main worktree/workspace path (useful for shell integration)
 
-    cd \"$(gwtx path)\"
+    cd \"$(kabu path)\"
         Select a worktree/workspace and change to it
 
-    cd \"$(gwtx path --main)\"
+    cd \"$(kabu path --main)\"
         Change to the main worktree/workspace")]
 pub(crate) struct PathArgs {
     /// Print the main worktree/workspace path instead of interactive selection
@@ -719,13 +717,13 @@ pub(crate) struct PathArgs {
 #[derive(Parser, Debug)]
 #[command(after_help = "\
 EXAMPLES:
-    gwtx untrust
+    kabu untrust
         Revoke trust for hooks in the current repository
 
-    gwtx untrust --list
+    kabu untrust --list
         List all trusted repositories
 
-    gwtx untrust /path/to/repo
+    kabu untrust /path/to/repo
         Revoke trust for a specific repository")]
 pub(crate) struct UntrustArgs {
     /// Path to repository (defaults to current directory)
