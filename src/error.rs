@@ -8,7 +8,7 @@ pub(crate) enum Error {
     #[error("Failed to parse config: {message}")]
     ConfigParse { message: String },
 
-    #[error("Your '.gwtx.yaml' configuration is invalid.\n\n{message}")]
+    #[error("Your '.gwtx/config.yaml' configuration is invalid.\n\n{message}")]
     ConfigValidation { message: String },
 
     #[error("Failed to parse global config: {message}")]
@@ -36,7 +36,7 @@ pub(crate) enum Error {
     JjWorkspaceAddFailed { stderr: String },
 
     #[error(
-        "A source path in '.gwtx.yaml' was not found.\n\n  Path: {path}\n  Reason: This file does not exist at the root of your repository.\n  Fix:    Ensure the path is correct and relative to the repository root."
+        "A source path in '.gwtx/config.yaml' was not found.\n\n  Path: {path}\n  Reason: This file does not exist at the root of your repository.\n  Fix:    Ensure the path is correct and relative to the repository root."
     )]
     SourceNotFound { path: String },
 
@@ -151,7 +151,7 @@ pub(crate) enum Error {
     #[error("Global config directory not found")]
     GlobalConfigDirNotFound,
 
-    #[error("No hooks defined in .gwtx.yaml")]
+    #[error("No hooks defined in .gwtx/config.yaml")]
     NoHooksDefined,
 
     #[error("Internal error: {0}")]

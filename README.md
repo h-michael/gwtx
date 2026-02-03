@@ -20,7 +20,7 @@ Every time you create a git worktree or jj workspace, you end up doing the same 
 - Copying `.env.example` to `.env`
 - Creating cache directories
 
-gwtx reads `.gwtx.yaml` from your repository and runs these tasks automatically when creating a worktree or workspace. It automatically detects whether you're in a git repository or jj repository and uses the appropriate commands.
+gwtx reads `.gwtx/config.yaml` from your repository and runs these tasks automatically when creating a worktree or workspace. It automatically detects whether you're in a git repository or jj repository and uses the appropriate commands.
 
 ## Installation
 
@@ -32,9 +32,9 @@ See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub R
 
 ## Quick Start
 
-1.  **Create `.gwtx.yaml`**: In your repository root, create a `.gwtx.yaml` file to define your worktree setup.
+1.  **Create `.gwtx/config.yaml`**: In your repository root, create a `.gwtx/config.yaml` file to define your worktree setup.
     ```yaml
-    # .gwtx.yaml example
+    # .gwtx/config.yaml example
     mkdir:
       - path: build
         description: Build output directory
@@ -46,7 +46,7 @@ See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub R
     ```bash
     gwtx add ../my-feature-worktree
     ```
-    This will create a new worktree at `../my-feature-worktree` and apply the `mkdir` and `link` operations defined in `.gwtx.yaml`.
+    This will create a new worktree at `../my-feature-worktree` and apply the `mkdir` and `link` operations defined in `.gwtx/config.yaml`.
 
 For comprehensive details on all commands, options, and configuration, please refer to the CLI's built-in help (`gwtx --help` and `gwtx <subcommand> --help`) and `man` pages (`gwtx man`).
 
@@ -176,7 +176,7 @@ gwtx config validate
 Hooks allow you to run custom commands before/after worktree operations:
 
 ```bash
-# Review and trust hooks in .gwtx.yaml
+# Review and trust hooks in .gwtx/config.yaml
 gwtx trust
 
 # Show hooks without trusting
@@ -234,11 +234,11 @@ Shell integration provides:
 
 ## Configuration
 
-Create `.gwtx.yaml` in your repository root. See [examples/](examples/) for various use cases.
+Create `.gwtx/config.yaml` in your repository root. See [examples/](examples/) for various use cases.
 
 **JSON Schema:** The configuration format is validated against a JSON Schema located at `schema/gwtx.schema.json`. This schema can be used with editors that support YAML schema validation for autocomplete and validation.
 
-**Editor Integration:** To enable schema validation in VS Code or other editors using [yaml-language-server](https://github.com/redhat-developer/yaml-language-server#using-inlined-schema), add this comment at the top of your `.gwtx.yaml`:
+**Editor Integration:** To enable schema validation in VS Code or other editors using [yaml-language-server](https://github.com/redhat-developer/yaml-language-server#using-inlined-schema), add this comment at the top of your `.gwtx/config.yaml`:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
@@ -406,7 +406,7 @@ gwtx Options:
   -i, --interactive         Interactive mode
       --on-conflict <MODE>  abort, skip, overwrite, backup
       --dry-run             Preview without executing
-      --no-setup            Skip .gwtx.yaml setup
+      --no-setup            Skip .gwtx/config.yaml setup
       --hook-shell <SHELL>  Windows only: hook shell
 
 git worktree Options:

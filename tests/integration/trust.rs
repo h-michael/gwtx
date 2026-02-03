@@ -102,7 +102,8 @@ hooks:
     - command: echo "modified hook"
       description: Modified pre-add hook
 "#;
-    std::fs::write(repo.path().join(".gwtx.yaml"), new_config).expect("Failed to write config");
+    std::fs::write(repo.path().join(".gwtx").join("config.yaml"), new_config)
+        .expect("Failed to write config");
 
     // Trust should now fail
     repo.gwtx()

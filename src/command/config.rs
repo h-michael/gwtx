@@ -15,7 +15,15 @@ pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
             global,
             path,
             override_existing,
-        }) => new_config(global, path, override_existing),
+            with_gitignore,
+            without_gitignore,
+        }) => new_config(
+            global,
+            path,
+            override_existing,
+            with_gitignore,
+            without_gitignore,
+        ),
         Some(ConfigCommand::Get { key }) => get_config_value(&key),
         None => {
             // Show help when no subcommand is given
@@ -31,7 +39,7 @@ pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
     }
 }
 
-/// Validate .gwtx.yaml configuration.
+/// Validate .gwtx/config.yaml configuration.
 fn validate() -> Result<()> {
     let provider = vcs::get_provider()?;
     if !provider.is_inside_repo() {
@@ -89,6 +97,8 @@ fn new_config(
     global: bool,
     custom_path: Option<std::path::PathBuf>,
     override_existing: bool,
+    with_gitignore: bool,
+    without_gitignore: bool,
 ) -> Result<()> {
     if let Some(path) = custom_path {
         let template = if global {
@@ -113,9 +123,54 @@ fn new_config(
     }
 
     let repo_root = provider.repository_root()?;
-    let path = repo_root.join(config::CONFIG_FILE_NAME);
+    let gwtx_dir = repo_root.join(config::CONFIG_DIR_NAME);
+    let config_path = gwtx_dir.join(config::CONFIG_FILE_NAME);
+
+    // Create .gwtx/ directory
+    fs::create_dir_all(&gwtx_dir)?;
+
+    // Write config.yaml
     let template = repo_config_template();
-    write_new_config(&path, &template, override_existing)?;
+    write_new_config(&config_path, &template, override_existing)?;
+
+    // Handle .gitignore
+    if with_gitignore {
+        write_gitignore(&gwtx_dir)?;
+    } else if !without_gitignore {
+        // Interactive prompt
+        if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+            if prompt_create_gitignore() {
+                write_gitignore(&gwtx_dir)?;
+            }
+        } else {
+            // Non-interactive: default to creating .gitignore
+            write_gitignore(&gwtx_dir)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn prompt_create_gitignore() -> bool {
+    use std::io::{BufRead, Write};
+
+    print!("Create .gwtx/.gitignore to exclude from git? [Y/n] ");
+    let _ = std::io::stdout().flush();
+
+    let stdin = std::io::stdin();
+    let mut line = String::new();
+    if stdin.lock().read_line(&mut line).is_err() {
+        return true; // Default to yes on error
+    }
+
+    let answer = line.trim().to_lowercase();
+    answer.is_empty() || answer == "y" || answer == "yes"
+}
+
+fn write_gitignore(gwtx_dir: &Path) -> Result<()> {
+    let path = gwtx_dir.join(".gitignore");
+    fs::write(&path, "/*\n")?;
+    println!("Created: {}", path.display());
     Ok(())
 }
 
@@ -201,7 +256,7 @@ fn global_config_template() -> String {
         r#"# yaml-language-server: $schema={}
 
 # Global gwtx configuration
-# This file applies to all repositories and can be overridden by .gwtx.yaml.
+# This file applies to all repositories and can be overridden by .gwtx/config.yaml.
 
 # Allowed keys: on_conflict, auto_cd, worktree, ui, hooks.hook_shell
 
@@ -254,7 +309,7 @@ fn global_config_template() -> String {
         r#"# yaml-language-server: $schema={}
 
 # Global gwtx configuration
-# This file applies to all repositories and can be overridden by .gwtx.yaml.
+# This file applies to all repositories and can be overridden by .gwtx/config.yaml.
 
 # Allowed keys: on_conflict, auto_cd, worktree, ui
 

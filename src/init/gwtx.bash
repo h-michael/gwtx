@@ -77,12 +77,12 @@ __gwtx_trust_check() {
     return
   }
 
-  config_path="$root/.gwtx.yaml"
+  config_path="$root/.gwtx/config.yaml"
 
-  # Get .gwtx.yaml mtime (Linux: stat -c '%Y', macOS: stat -f '%m')
+  # Get .gwtx/config.yaml mtime (Linux: stat -c '%Y', macOS: stat -f '%m')
   current_mtime=$(stat -c '%Y' "$config_path" 2>/dev/null || stat -f '%m' "$config_path" 2>/dev/null || echo "")
 
-  # Invalidate cache if repository changed or .gwtx.yaml was modified
+  # Invalidate cache if repository changed or .gwtx/config.yaml was modified
   if [ "$root" != "$__gwtx_trust_root" ] || \
      [ "$current_mtime" != "$__gwtx_trust_config_mtime" ]; then
     __gwtx_trust_root="$root"
@@ -97,9 +97,9 @@ __gwtx_trust_check() {
 
   if [ "$__gwtx_trust_state" != "untrusted" ]; then
     if [ -t 2 ]; then
-      printf '\033[31m%s\033[0m\n' "gwtx: hooks in .gwtx.yaml are not trusted. Run 'gwtx trust' to review them." 1>&2
+      printf '\033[31m%s\033[0m\n' "gwtx: hooks in .gwtx/config.yaml are not trusted. Run 'gwtx trust' to review them." 1>&2
     else
-      printf '%s\n' "gwtx: hooks in .gwtx.yaml are not trusted. Run 'gwtx trust' to review them." 1>&2
+      printf '%s\n' "gwtx: hooks in .gwtx/config.yaml are not trusted. Run 'gwtx trust' to review them." 1>&2
     fi
   fi
   __gwtx_trust_state="untrusted"

@@ -18,7 +18,7 @@ VCS SUPPORT:
     - Colocated repositories (jj on top of git)
 
 CONFIGURATION:
-    gwtx reads .gwtx.yaml from the repository root for setup instructions.
+    gwtx reads .gwtx/config.yaml from the repository root for setup instructions.
 
 COLOR OUTPUT:
     gwtx uses colored output for better readability. Control with:
@@ -34,7 +34,7 @@ COLOR OUTPUT:
 
 EXAMPLES:
     gwtx add ../new-worktree-path
-        Create worktree and run setup from .gwtx.yaml
+        Create worktree and run setup from .gwtx/config.yaml
 
     gwtx add -b new-branch-name ../new-worktree-path
         Create new branch and worktree with setup
@@ -58,7 +58,7 @@ EXAMPLES:
         Preview what would be removed without executing
 
     gwtx trust
-        Trust hooks in .gwtx.yaml (required for hook execution)
+        Trust hooks in .gwtx/config.yaml (required for hook execution)
 
     gwtx untrust --list
         List all trusted repositories
@@ -98,13 +98,13 @@ pub(crate) enum Command {
     /// Change directory to a selected worktree/workspace (requires shell integration)
     Cd,
 
-    /// Manage .gwtx.yaml configuration
+    /// Manage .gwtx/config.yaml configuration
     Config(ConfigArgs),
 
-    /// Trust hooks in .gwtx.yaml for the current repository
+    /// Trust hooks in .gwtx/config.yaml for the current repository
     Trust(TrustArgs),
 
-    /// Revoke trust for hooks in .gwtx.yaml
+    /// Revoke trust for hooks in .gwtx/config.yaml
     Untrust(UntrustArgs),
 
     /// Generate shell completion script
@@ -217,7 +217,7 @@ pub(crate) struct ConfigArgs {
 /// Config subcommands.
 #[derive(Subcommand, Debug)]
 pub(crate) enum ConfigCommand {
-    /// Validate .gwtx.yaml configuration
+    /// Validate .gwtx/config.yaml configuration
     Validate,
     /// Generate JSON Schema for configuration
     Schema,
@@ -238,6 +238,14 @@ pub(crate) enum ConfigCommand {
         /// Overwrite existing config file
         #[arg(short = 'O', long = "override")]
         override_existing: bool,
+
+        /// Create .gwtx/.gitignore to exclude config from git
+        #[arg(long)]
+        with_gitignore: bool,
+
+        /// Do not create .gwtx/.gitignore (skip prompt)
+        #[arg(long, conflicts_with = "with_gitignore")]
+        without_gitignore: bool,
     },
     /// Get a configuration value
     Get {
@@ -256,7 +264,7 @@ VCS SUPPORT:
 
 EXAMPLES:
     gwtx add ../new-worktree-path
-        Create worktree/workspace and run setup from .gwtx.yaml
+        Create worktree/workspace and run setup from .gwtx/config.yaml
 
     gwtx add -b new-branch-name ../new-worktree-path
         Create new branch (git) or bookmark (jj) with worktree/workspace
@@ -304,7 +312,7 @@ pub(crate) struct AddArgs {
     #[arg(long, help_heading = "gwtx Options")]
     pub dry_run: bool,
 
-    /// Skip .gwtx.yaml setup, run worktree/workspace add only
+    /// Skip .gwtx/config.yaml setup, run worktree/workspace add only
     #[arg(long, help_heading = "gwtx Options")]
     pub no_setup: bool,
 
@@ -549,7 +557,7 @@ SECURITY:
     Trust is stored in: ~/.local/share/gwtx/trusted/
     Each repository's hooks are identified by a SHA256 hash.
 
-    If hooks are modified in .gwtx.yaml, you must re-trust them.
+    If hooks are modified in .gwtx/config.yaml, you must re-trust them.
 
 HOOKS:
     Platform support: Unix-like systems (Linux, macOS) and Windows.
@@ -572,7 +580,7 @@ HOOKS:
 
 EXAMPLES:
     gwtx trust
-        Trust hooks in .gwtx.yaml for the current repository
+        Trust hooks in .gwtx/config.yaml for the current repository
 
     gwtx trust --yes
         Trust hooks without prompting

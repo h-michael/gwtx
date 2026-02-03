@@ -71,23 +71,25 @@ impl JjTestRepo {
         }
     }
 
-    /// Create a new repository with the given .gwtx.yaml config
+    /// Create a new repository with the given .gwtx/config.yaml config
     pub fn with_config(yaml: &str) -> Self {
         let repo = Self::new();
         repo.write_config(yaml);
         repo
     }
 
-    /// Create a colocated repository with the given .gwtx.yaml config
+    /// Create a colocated repository with the given .gwtx/config.yaml config
     pub fn with_config_colocated(yaml: &str) -> Self {
         let repo = Self::new_colocated();
         repo.write_config(yaml);
         repo
     }
 
-    /// Write .gwtx.yaml configuration file
+    /// Write .gwtx/config.yaml configuration file
     pub fn write_config(&self, yaml: &str) {
-        let config_path = self.repo_path.join(".gwtx.yaml");
+        let gwtx_dir = self.repo_path.join(".gwtx");
+        fs::create_dir_all(&gwtx_dir).expect("Failed to create .gwtx directory");
+        let config_path = gwtx_dir.join("config.yaml");
         fs::write(&config_path, yaml).expect("Failed to write config");
         run_jj(&self.repo_path, &["describe", "-m", "Add gwtx config"]);
         run_jj(&self.repo_path, &["new"]);
