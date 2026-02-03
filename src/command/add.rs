@@ -1,6 +1,6 @@
 //! Add worktree/workspace command implementation.
 //!
-//! Creates a new git worktree or jj workspace with automated setup from `.gwtx.yaml`.
+//! Creates a new git worktree or jj workspace with automated setup from `.gwtx/config.yaml`.
 //! Supports both interactive and non-interactive modes, with rollback on failure.
 
 use crate::cli::AddArgs;

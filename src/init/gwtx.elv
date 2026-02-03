@@ -72,8 +72,8 @@ fn __gwtx_trust_check {
     return
   }
 
-  # Get .gwtx.yaml modification time
-  var config_path = $root"/.gwtx.yaml"
+  # Get .gwtx/config.yaml modification time
+  var config_path = $root"/.gwtx/config.yaml"
   var current_mtime = ""
   try {
     var mtime = (path:lstat $config_path)[mtime]
@@ -82,7 +82,7 @@ fn __gwtx_trust_check {
     # If unable to get mtime, use empty string
   }
 
-  # Invalidate cache if repository changed or .gwtx.yaml was modified
+  # Invalidate cache if repository changed or .gwtx/config.yaml was modified
   if (or (not (eq $root $__gwtx_trust_root)) (not (eq $current_mtime $__gwtx_trust_config_mtime))) {
     set &__gwtx_trust_root = $root
     set &__gwtx_trust_config_mtime = $current_mtime
@@ -97,9 +97,9 @@ fn __gwtx_trust_check {
 
   if (not (eq $__gwtx_trust_state untrusted)) {
     if (eq $term:color true) {
-      echo >&2 "\e[31mgwtx: hooks in .gwtx.yaml are not trusted. Run 'gwtx trust' to review them.\e[0m"
+      echo >&2 "\e[31mgwtx: hooks in .gwtx/config.yaml are not trusted. Run 'gwtx trust' to review them.\e[0m"
     } else {
-      echo >&2 "gwtx: hooks in .gwtx.yaml are not trusted. Run 'gwtx trust' to review them."
+      echo >&2 "gwtx: hooks in .gwtx/config.yaml are not trusted. Run 'gwtx trust' to review them."
     }
   }
   set &__gwtx_trust_state = untrusted

@@ -32,7 +32,7 @@ pub(crate) fn load_config_with_trust_check(
 
         eprintln!();
         eprintln!("{}", ColorScheme::error("Configuration is not trusted."));
-        eprintln!("The .gwtx.yaml file contains hooks that can execute arbitrary commands.");
+        eprintln!("The .gwtx/config.yaml file contains hooks that can execute arbitrary commands.");
         eprintln!("For security, you must explicitly review and trust the configuration.");
         eprintln!();
         eprintln!("To trust this configuration, run:");
@@ -57,7 +57,7 @@ pub(crate) fn load_config_with_trust_check(
     {
         eprintln!(
             "{}",
-            ColorScheme::error(".gwtx.yaml was modified after trust check.")
+            ColorScheme::error(".gwtx/config.yaml was modified after trust check.")
         );
         eprintln!("For security, configuration must be re-trusted after any changes.");
         eprintln!("Run: gwtx trust");

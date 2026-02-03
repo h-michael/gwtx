@@ -81,8 +81,8 @@ function __gwtx_trust_check {
     return
   }
 
-  # Get .gwtx.yaml modification time
-  $config_path = "$root\.gwtx.yaml"
+  # Get .gwtx/config.yaml modification time
+  $config_path = "$root\.gwtx\config.yaml"
   $current_mtime = ""
   try {
     if (Test-Path $config_path) {
@@ -92,7 +92,7 @@ function __gwtx_trust_check {
     # If unable to get mtime, use empty string
   }
 
-  # Invalidate cache if repository changed or .gwtx.yaml was modified
+  # Invalidate cache if repository changed or .gwtx/config.yaml was modified
   if ($root -ne $global:__gwtx_trust_root -or $current_mtime -ne $global:__gwtx_trust_config_mtime) {
     $global:__gwtx_trust_root = $root
     $global:__gwtx_trust_config_mtime = $current_mtime
@@ -106,7 +106,7 @@ function __gwtx_trust_check {
   }
 
   if ($global:__gwtx_trust_state -ne "untrusted") {
-    Write-Host "gwtx: hooks in .gwtx.yaml are not trusted. Run 'gwtx trust' to review them." -ForegroundColor Red
+    Write-Host "gwtx: hooks in .gwtx/config.yaml are not trusted. Run 'gwtx trust' to review them." -ForegroundColor Red
   }
   $global:__gwtx_trust_state = "untrusted"
 }

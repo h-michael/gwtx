@@ -1,6 +1,6 @@
 //! Hook trust management system
 //!
-//! This module manages whether git hooks in `.gwtx.yaml` have been explicitly reviewed
+//! This module manages whether git hooks in `.gwtx/config.yaml` have been explicitly reviewed
 //! and trusted by the user. Trust is based on a SHA256 hash of the hook commands and
 //! descriptions, combined with the primary worktree path.
 //!
@@ -18,16 +18,16 @@
 //!
 //! **Automatic Cleanup of Old Files**: When hooks are re-trusted with new content,
 //! all previous trust files for that primary worktree are deleted. This prevents
-//! reversion attacks where an attacker could restore old `.gwtx.yaml` and use previously
+//! reversion attacks where an attacker could restore old `.gwtx/config.yaml` and use previously
 //! trusted hooks. Only the current hooks hash is valid for a given primary worktree.
 //!
 //! **Path Verification**: The main_worktree_path is stored in the trust file and
 //! verified during `is_trusted()`. This prevents symlink attacks where an attacker could
 //! replace the worktree directory with a symlink to a different path with old trusted hooks.
 //!
-//! **Empty Hooks Are Implicitly Trusted**: If `.gwtx.yaml` has no hooks (or is empty),
+//! **Empty Hooks Are Implicitly Trusted**: If `.gwtx/config.yaml` has no hooks (or is empty),
 //! `is_trusted()` returns true immediately without checking disk. Rationale: no hooks means
-//! nothing to trust; the user cannot create a `.gwtx.yaml` without hooks and then claim
+//! nothing to trust; the user cannot create a `.gwtx/config.yaml` without hooks and then claim
 //! hooks exist.
 
 use crate::config::{Config, ConfigSnapshot};
@@ -289,13 +289,13 @@ pub(crate) fn read_trust_entry(main_worktree_path: &Path) -> Result<Option<Trust
 ///
 /// **Automatic Cleanup**: Deletes all old trust files in the same directory before creating
 /// the new one. This prevents reversion attacks where an attacker could restore an old
-/// `.gwtx.yaml` and use previously trusted configuration with different content.
+/// `.gwtx/config.yaml` and use previously trusted configuration with different content.
 ///
 /// Reversion Attack Scenario (prevented by this cleanup):
 /// 1. User trusts config (file hash=ABC123 created)
-/// 2. Attacker modifies `.gwtx.yaml` with dangerous commands
+/// 2. Attacker modifies `.gwtx/config.yaml` with dangerous commands
 /// 3. User runs `gwtx trust` again with new content (file hash=XYZ789 created)
-/// 4. Attacker reverts `.gwtx.yaml` to original content (hash=ABC123)
+/// 4. Attacker reverts `.gwtx/config.yaml` to original content (hash=ABC123)
 /// 5. OLD BEHAVIOR: hash=ABC123 still exists, config trusted without re-review
 /// 6. NEW BEHAVIOR: hash=ABC123 was deleted in step 3, reversion fails
 pub(crate) fn trust(main_worktree_path: &Path, config: &Config) -> Result<()> {
@@ -318,7 +318,7 @@ pub(crate) fn trust(main_worktree_path: &Path, config: &Config) -> Result<()> {
 
     // Remove old trust files for this main_worktree_path (before saving new one).
     // Security: Prevents reversion attacks by ensuring only the current config hash
-    // is valid for this primary worktree. If .gwtx.yaml is reverted to an older
+    // is valid for this primary worktree. If .gwtx/config.yaml is reverted to an older
     // version, the old hash file won't exist and re-trust will be required.
     if trust_repo_path.exists() {
         for entry in fs::read_dir(&trust_repo_path)?.flatten() {

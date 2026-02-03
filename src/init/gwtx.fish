@@ -67,17 +67,17 @@ function __gwtx_trust_check --on-event fish_prompt --on-variable PWD
     return
   end
 
-  # Get .gwtx.yaml mtime (Linux: stat -c '%Y', macOS: stat -f '%m')
-  set -l config_path "$root/.gwtx.yaml"
+  # Get .gwtx/config.yaml mtime (Linux: stat -c '%Y', macOS: stat -f '%m')
+  set -l config_path "$root/.gwtx/config.yaml"
 
-  # Skip if .gwtx.yaml doesn't exist
+  # Skip if .gwtx/config.yaml doesn't exist
   if not test -f "$config_path"
     return
   end
 
   set -l current_mtime (stat -c '%Y' "$config_path" 2>/dev/null; or stat -f '%m' "$config_path" 2>/dev/null; or echo "")
 
-  # Invalidate cache if repository changed or .gwtx.yaml was modified
+  # Invalidate cache if repository changed or .gwtx/config.yaml was modified
   if test "$root" != "$__gwtx_trust_root"; or test "$current_mtime" != "$__gwtx_trust_config_mtime"
     set -g __gwtx_trust_root "$root"
     set -g __gwtx_trust_config_mtime "$current_mtime"
@@ -92,9 +92,9 @@ function __gwtx_trust_check --on-event fish_prompt --on-variable PWD
 
   if test "$__gwtx_trust_state" != "untrusted"
     if test -t 2
-      printf '\033[31m%s\033[0m\n' "gwtx: hooks in .gwtx.yaml are not trusted. Run 'gwtx trust' to review them." 1>&2
+      printf '\033[31m%s\033[0m\n' "gwtx: hooks in .gwtx/config.yaml are not trusted. Run 'gwtx trust' to review them." 1>&2
     else
-      printf '%s\n' "gwtx: hooks in .gwtx.yaml are not trusted. Run 'gwtx trust' to review them." 1>&2
+      printf '%s\n' "gwtx: hooks in .gwtx/config.yaml are not trusted. Run 'gwtx trust' to review them." 1>&2
     end
   end
   set -g __gwtx_trust_state untrusted

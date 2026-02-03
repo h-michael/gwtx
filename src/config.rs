@@ -8,14 +8,16 @@ use std::path::{Path, PathBuf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Config directory name
+pub const CONFIG_DIR_NAME: &str = ".gwtx";
 /// Config file name
-pub const CONFIG_FILE_NAME: &str = ".gwtx.yaml";
+pub const CONFIG_FILE_NAME: &str = "config.yaml";
 const GLOBAL_CONFIG_DIR_NAME: &str = "gwtx";
 const GLOBAL_CONFIG_FILE_NAME: &str = "config.yaml";
 
 /// Load config from the repository root. Returns None if config file doesn't exist.
 pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
-    let config_path = repo_root.join(CONFIG_FILE_NAME);
+    let config_path = repo_root.join(CONFIG_DIR_NAME).join(CONFIG_FILE_NAME);
 
     if !config_path.exists() {
         return Ok(None);
@@ -307,7 +309,7 @@ struct RawCopy {
 
 // Validated types used by the application. Guaranteed valid after TryFrom conversion.
 
-/// Root configuration from .gwtx.yaml.
+/// Root configuration from .gwtx/config.yaml.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Config {
     pub on_conflict: Option<OnConflict>,
