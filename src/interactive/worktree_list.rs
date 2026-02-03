@@ -346,7 +346,7 @@ fn draw_worktree_list(
         .padding(Padding::new(1, 1, 0, 0))
         .title(Span::styled("Search", theme.title_style()));
     let search_line = Line::from(vec![
-        Span::styled("Search: ", theme.search_style()),
+        Span::styled("", theme.search_style()),
         Span::styled(
             &state.query,
             theme.search_style().add_modifier(Modifier::BOLD),
