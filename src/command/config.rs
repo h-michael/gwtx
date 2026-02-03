@@ -1,7 +1,7 @@
 use crate::cli::ConfigCommand;
 use crate::config;
 use crate::error::{Error, Result};
-use crate::git;
+use crate::vcs;
 
 use std::fs;
 use std::path::Path;
@@ -33,11 +33,12 @@ pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
 
 /// Validate .gwtx.yaml configuration.
 fn validate() -> Result<()> {
-    if !git::is_inside_repo() {
-        return Err(Error::NotInGitRepo);
+    let provider = vcs::get_provider()?;
+    if !provider.is_inside_repo() {
+        return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = git::repository_root()?;
+    let repo_root = provider.repository_root()?;
     config::load(&repo_root)?;
 
     println!("Config is valid");
@@ -46,11 +47,12 @@ fn validate() -> Result<()> {
 
 /// Get a configuration value by key.
 fn get_config_value(key: &str) -> Result<()> {
-    if !git::is_inside_repo() {
-        return Err(Error::NotInGitRepo);
+    let provider = vcs::get_provider()?;
+    if !provider.is_inside_repo() {
+        return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = git::repository_root()?;
+    let repo_root = provider.repository_root()?;
     let cfg = config::load_merged(&repo_root)?;
 
     match key {
@@ -105,11 +107,12 @@ fn new_config(
         return Ok(());
     }
 
-    if !git::is_inside_repo() {
-        return Err(Error::NotInGitRepo);
+    let provider = vcs::get_provider()?;
+    if !provider.is_inside_repo() {
+        return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = git::repository_root()?;
+    let repo_root = provider.repository_root()?;
     let path = repo_root.join(config::CONFIG_FILE_NAME);
     let template = repo_config_template();
     write_new_config(&path, &template, override_existing)?;

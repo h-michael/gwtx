@@ -1,5 +1,5 @@
 use crate::cli::UntrustArgs;
-use crate::{config, error::Error, error::Result, git, trust};
+use crate::{config, error::Error, error::Result, trust, vcs};
 
 pub(crate) fn run(args: UntrustArgs) -> Result<()> {
     if args.list {
@@ -16,12 +16,13 @@ pub(crate) fn run(args: UntrustArgs) -> Result<()> {
         return Ok(());
     }
 
+    let provider = vcs::get_provider()?;
     let repo_root = match args.path {
         Some(p) => p.canonicalize()?,
-        None => git::repository_root()?,
+        None => provider.repository_root()?,
     };
 
-    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
+    let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
 
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),

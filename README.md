@@ -1,22 +1,26 @@
-# gwtx (git worktree extra)
+# gwtx (git/jj worktree extra)
 
 [![Crates.io](https://img.shields.io/crates/v/gwtx.svg)](https://crates.io/crates/gwtx)
 [![CI](https://github.com/h-michael/gwtx/actions/workflows/ci.yml/badge.svg)](https://github.com/h-michael/gwtx/actions/workflows/ci.yml)
 [![License](https://img.shields.io/crates/l/gwtx.svg)](LICENSE-MIT)
 
-CLI tool that enhances git worktree with automated setup and utilities.
+CLI tool that enhances git worktree and jj workspace with automated setup and utilities.
+
+**Supported VCS:**
+- **Git** - `git worktree` operations
+- **jj (Jujutsu)** - `jj workspace` operations (including colocated repositories)
 
 > **Note:** This tool is under active development. Commands and configuration format may change in future versions.
 
 ## Problem
 
-Every time you create a git worktree, you end up doing the same manual setup:
+Every time you create a git worktree or jj workspace, you end up doing the same manual setup:
 
 - Creating symlinks to config files like `.env.local`
 - Copying `.env.example` to `.env`
 - Creating cache directories
 
-gwtx reads `.gwtx.yaml` from your repository and runs these tasks automatically when creating a worktree.
+gwtx reads `.gwtx.yaml` from your repository and runs these tasks automatically when creating a worktree or workspace. It automatically detects whether you're in a git repository or jj repository and uses the appropriate commands.
 
 ## Installation
 
@@ -46,15 +50,33 @@ See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub R
 
 For comprehensive details on all commands, options, and configuration, please refer to the CLI's built-in help (`gwtx --help` and `gwtx <subcommand> --help`) and `man` pages (`gwtx man`).
 
+## VCS Support
+
+gwtx automatically detects the version control system in use:
+
+| VCS | Detection | Commands Used |
+|-----|-----------|---------------|
+| **Git** | `.git` directory | `git worktree add/remove/list` |
+| **jj (Jujutsu)** | `.jj` directory | `jj workspace add/forget/list` |
+| **jj colocated** | Both `.git` and `.jj` | `jj workspace` commands |
+
+All gwtx commands work the same regardless of the underlying VCS. The tool transparently translates operations to the appropriate VCS commands.
+
+**jj-specific notes:**
+- jj "workspaces" serve a similar purpose to git "worktrees" (multiple working directories for the same repository)
+- The "default" workspace in jj is treated as the main workspace
+- Colocated repositories (jj on top of git) are fully supported
+
 ## Usage
 
-### Creating new worktrees
+### Creating new worktrees/workspaces
 
 ```bash
-# Create a worktree with setup
+# Create a worktree/workspace with setup
 gwtx add ../feature-branch
 
-# Create a new branch and worktree
+# Create a new branch and worktree (git)
+# or new workspace with bookmark (jj)
 gwtx add -b new-feature ../new-feature
 
 # Interactive mode - select branch and path
@@ -64,17 +86,17 @@ gwtx add --interactive
 gwtx add --dry-run ../test
 ```
 
-### Listing worktrees
+### Listing worktrees/workspaces
 
 ```bash
-# List all worktrees with detailed information (branch, commit hash, status)
+# List all worktrees/workspaces with detailed information
 gwtx list
 gwtx ls  # Short alias
 
 # Show header row with column names
 gwtx list --header
 
-# List only worktree paths (useful for scripting)
+# List only paths (useful for scripting)
 gwtx list --path-only
 gwtx ls -p
 ```
@@ -82,22 +104,24 @@ gwtx ls -p
 **Status Symbols:**
 - `*` = Uncommitted changes (modified, deleted, or untracked files)
 
-Note: Use `git status` in the worktree directory for detailed status information.
+**jj-specific columns:**
+- Shows workspace name and change ID instead of branch name when applicable
+- Displays bookmark name if associated with the workspace
 
-### Removing worktrees
+### Removing worktrees/workspaces
 
 ```bash
-# Remove a worktree with safety checks
+# Remove a worktree/workspace with safety checks
 gwtx remove ../feature-branch
 
 # Shorthand alias
 gwtx rm ../feature-branch
 
-# Remove current worktree (the one you're in)
+# Remove current worktree/workspace (the one you're in)
 gwtx remove --current
 
-# Interactive mode - select worktrees to remove
-# Shows [current] marker for the worktree you're in
+# Interactive mode - select worktrees/workspaces to remove
+# Shows [current] marker for the one you're in
 gwtx remove --interactive
 
 # Preview what would be removed
@@ -113,7 +137,7 @@ By default, `gwtx remove` warns about:
 - Modified files
 - Deleted files
 - Untracked files
-- Unpushed commits
+- Unpushed commits (git) / commits not on remote bookmarks (jj)
 
 Use `--force` to bypass all checks and confirmation prompts.
 

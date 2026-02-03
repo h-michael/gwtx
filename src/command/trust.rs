@@ -1,17 +1,19 @@
 use crate::cli::TrustArgs;
 use crate::color::{self, ColorConfig, ColorScheme};
 use crate::config::ConfigSnapshot;
-use crate::{config, error::Error, error::Result, git, prompt, trust};
+use crate::{config, error::Error, error::Result, prompt, trust, vcs};
 
 pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
+    let provider = vcs::get_provider()?;
+
     if args.check {
         let repo_root = match args.path {
             Some(p) => p.canonicalize()?,
             None => {
-                if !git::is_inside_repo() {
+                if !provider.is_inside_repo() {
                     return Ok(());
                 }
-                git::repository_root()?
+                provider.repository_root()?
             }
         };
 
@@ -24,7 +26,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
             return Ok(());
         }
 
-        let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
+        let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
         let is_trusted = trust::is_trusted(&main_worktree_path, &config)?;
         if is_trusted {
             return Ok(());
@@ -35,10 +37,10 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
 
     let repo_root = match args.path {
         Some(p) => p.canonicalize()?,
-        None => git::repository_root()?,
+        None => provider.repository_root()?,
     };
 
-    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
+    let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
 
     let config = config::load(&repo_root)?.ok_or_else(|| Error::ConfigNotFound {
         path: repo_root.clone(),
