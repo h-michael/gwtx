@@ -1,8 +1,82 @@
+//! Git VCS provider implementation.
+//!
+//! Provides workspace operations using git worktree commands.
+
+use super::{UnpushedInfo, VcsKind, VcsProvider, WorkspaceInfo, WorkspaceStatus};
 use crate::cli::AddArgs;
 use crate::error::{Error, Result};
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Git VCS provider.
+pub(crate) struct GitProvider;
+
+impl VcsProvider for GitProvider {
+    fn kind(&self) -> VcsKind {
+        VcsKind::Git
+    }
+
+    fn is_inside_repo(&self) -> bool {
+        is_inside_repo()
+    }
+
+    fn repository_root(&self) -> Result<PathBuf> {
+        repository_root()
+    }
+
+    fn main_workspace_path_for(&self, repo_root: &Path) -> Result<PathBuf> {
+        main_worktree_path_for(repo_root)
+    }
+
+    fn workspace_add(&self, args: &AddArgs, path: &Path) -> Result<()> {
+        worktree_add(args, path)
+    }
+
+    fn workspace_remove(&self, path: &Path, force: bool) -> Result<()> {
+        worktree_remove(path, force)
+    }
+
+    fn workspace_remove_checked(&self, path: &Path, force: bool) -> Result<()> {
+        worktree_remove_checked(path, force)
+    }
+
+    fn list_workspaces(&self) -> Result<Vec<WorkspaceInfo>> {
+        list_worktrees()
+    }
+
+    fn workspace_status(&self, path: &Path) -> Result<WorkspaceStatus> {
+        worktree_status(path)
+    }
+
+    fn workspace_unpushed(&self, path: &Path) -> Result<UnpushedInfo> {
+        worktree_unpushed_commits(path)
+    }
+
+    fn get_upstream(&self, path: &Path) -> Result<Option<String>> {
+        get_upstream_branch(path)
+    }
+
+    fn list_tracked_files(&self, repo_root: &Path) -> Result<Vec<PathBuf>> {
+        list_tracked_files(repo_root)
+    }
+
+    fn list_branches(&self) -> Result<Vec<String>> {
+        list_branches()
+    }
+
+    fn list_remote_branches(&self) -> Result<Vec<String>> {
+        list_remote_branches()
+    }
+
+    fn log_oneline(&self, commitish: &str, limit: usize) -> Result<Vec<String>> {
+        log_oneline(commitish, limit)
+    }
+
+    fn validate_branch_name(&self, name: &str) -> Result<Option<String>> {
+        validate_branch_name(name)
+    }
+}
 
 /// Run `git worktree add` with CLI arguments.
 pub(crate) fn worktree_add(args: &AddArgs, path: &std::path::Path) -> Result<()> {
@@ -74,21 +148,11 @@ pub(crate) fn repository_root() -> Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
-/// Get the repository name (directory name of repo root).
-pub(crate) fn repository_name() -> Result<String> {
-    let root = repository_root()?;
-    root.file_name()
-        .and_then(|n| n.to_str())
-        .map(|s| s.to_string())
-        .ok_or(Error::NotInGitRepo)
-}
-
 /// Remove a worktree. Used for rollback on failure.
 pub(crate) fn worktree_remove(path: &std::path::Path, force: bool) -> Result<()> {
     let output = worktree_remove_inner(path, force)?;
 
     if !output.status.success() {
-        // Ignore errors during rollback - best effort cleanup
         eprintln!(
             "Warning: Failed to remove worktree: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -185,7 +249,6 @@ pub(crate) fn list_remote_branches() -> Result<Vec<String>> {
             let branch_name = parts[0];
             let is_symref = parts.len() > 1 && !parts[1].is_empty();
 
-            // Filter out symbolic references (like "origin" which is origin/HEAD)
             if is_symref {
                 None
             } else {
@@ -251,30 +314,7 @@ pub(crate) fn list_tracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Get the main worktree path for a specific repository directory.
-///
-/// In a git worktree setup, this returns the path of the main worktree (where `.git` is
-/// a directory, not a file). All linked worktrees created from this main worktree contain
-/// a `.git` file that references the main worktree's `.git` directory.
-///
-/// In a regular (non-worktree) repository, this returns the same path as `repository_root()`.
-///
-/// **Used by trust system**: The trust system uses this path to group hooks across all
-/// worktrees from the same source. This allows multiple worktrees to share the same
-/// trust state without requiring separate approvals for each worktree.
-///
-/// Executes git commands within the given repo_root directory, making this safe to call
-/// from outside the repository. This is used to resolve the main worktree when a path is
-/// explicitly provided to commands like `gwtx trust --path /path/to/repo`.
 pub(crate) fn main_worktree_path_for(repo_root: &Path) -> Result<PathBuf> {
-    // Get list of all worktrees in the specified repository
-    // Output is multiple lines per worktree:
-    //   worktree /path/to/worktree
-    //   HEAD <commit-hash>
-    //   branch refs/heads/...
-    //   [detached]
-    //
-    //   worktree /path/to/another-worktree
-    //   ...
     let output = Command::new("git")
         .args(["worktree", "list", "--porcelain"])
         .current_dir(repo_root)
@@ -287,7 +327,6 @@ pub(crate) fn main_worktree_path_for(repo_root: &Path) -> Result<PathBuf> {
     let lines = parse_output_lines(&output.stdout);
 
     for line in lines {
-        // Extract worktree paths from "worktree /path/..." lines
         if !line.starts_with("worktree ") {
             continue;
         }
@@ -299,14 +338,10 @@ pub(crate) fn main_worktree_path_for(repo_root: &Path) -> Result<PathBuf> {
 
         let path = PathBuf::from(path_str);
 
-        // Skip non-existent worktrees (deleted/broken entries)
         if !path.exists() {
             continue;
         }
 
-        // Determine if this worktree is the primary by checking git-dir
-        // Primary: `git rev-parse --git-dir` returns ".git" (relative) or absolute path ending in .git
-        // Linked:  `git rev-parse --git-dir` returns ".git/worktrees/..." (relative) or absolute path
         let git_dir_output = Command::new("git")
             .args(["rev-parse", "--git-dir"])
             .current_dir(&path)
@@ -314,7 +349,7 @@ pub(crate) fn main_worktree_path_for(repo_root: &Path) -> Result<PathBuf> {
 
         let git_dir_output = match git_dir_output {
             Ok(output) if output.status.success() => output,
-            _ => continue, // Skip if git command fails
+            _ => continue,
         };
 
         let git_dir = String::from_utf8_lossy(&git_dir_output.stdout)
@@ -324,17 +359,8 @@ pub(crate) fn main_worktree_path_for(repo_root: &Path) -> Result<PathBuf> {
             continue;
         }
 
-        // Check if this is the primary worktree by examining git-dir file name
-        // file_name() extracts just the final component:
-        //   ".git" → ".git" ✓ (primary)
-        //   "/path/to/.git" → ".git" ✓ (primary, absolute)
-        //   ".git/worktrees/name" → "name" ✗ (linked)
-        //   "/path/to/.git/worktrees/name" → "name" ✗ (linked)
         let git_dir_path = PathBuf::from(&git_dir);
         if git_dir_path.file_name() == Some(std::ffi::OsStr::new(".git")) {
-            // Found the primary worktree. Canonicalize to get absolute path.
-            // Canonicalization ensures consistent path representation across different shells
-            // and symlink resolutions (important for trust hash consistency).
             return path.canonicalize().map_err(|e| {
                 Error::Internal(format!(
                     "Failed to canonicalize primary worktree path '{}': {}",
@@ -345,22 +371,11 @@ pub(crate) fn main_worktree_path_for(repo_root: &Path) -> Result<PathBuf> {
         }
     }
 
-    // No primary worktree found (shouldn't happen in valid repo)
     Err(Error::NotInGitRepo)
 }
 
-/// Information about a worktree.
-#[derive(Debug, Clone)]
-pub(crate) struct WorktreeInfo {
-    pub path: PathBuf,
-    pub head: String,
-    pub branch: Option<String>,
-    pub is_main: bool,
-    pub is_locked: bool,
-}
-
 /// List all worktrees with their information.
-pub(crate) fn list_worktrees() -> Result<Vec<WorktreeInfo>> {
+pub(crate) fn list_worktrees() -> Result<Vec<WorkspaceInfo>> {
     let output = Command::new("git")
         .args(["worktree", "list", "--porcelain"])
         .output()?;
@@ -372,10 +387,10 @@ pub(crate) fn list_worktrees() -> Result<Vec<WorktreeInfo>> {
     parse_worktree_list(&output.stdout)
 }
 
-fn parse_worktree_list(bytes: &[u8]) -> Result<Vec<WorktreeInfo>> {
+fn parse_worktree_list(bytes: &[u8]) -> Result<Vec<WorkspaceInfo>> {
     let text = String::from_utf8_lossy(bytes);
     let mut worktrees = Vec::new();
-    let mut current: Option<WorktreeInfo> = None;
+    let mut current: Option<WorkspaceInfo> = None;
     let mut is_first = true;
 
     for line in text.lines() {
@@ -383,14 +398,14 @@ fn parse_worktree_list(bytes: &[u8]) -> Result<Vec<WorktreeInfo>> {
             if let Some(wt) = current.take() {
                 worktrees.push(wt);
             }
-            // Use empty string as fallback if prefix is missing (shouldn't happen in normal git output)
             let path = PathBuf::from(line.strip_prefix("worktree ").unwrap_or(""));
-            current = Some(WorktreeInfo {
+            current = Some(WorkspaceInfo {
                 path,
                 head: String::new(),
                 branch: None,
                 is_main: is_first,
                 is_locked: false,
+                workspace_name: None,
             });
             is_first = false;
         } else if line.starts_with("HEAD ") {
@@ -403,10 +418,10 @@ fn parse_worktree_list(bytes: &[u8]) -> Result<Vec<WorktreeInfo>> {
             }
         } else if line == "detached" {
             // HEAD is detached, branch remains None
-        } else if line.starts_with("locked") {
-            if let Some(ref mut wt) = current {
-                wt.is_locked = true;
-            }
+        } else if line.starts_with("locked")
+            && let Some(ref mut wt) = current
+        {
+            wt.is_locked = true;
         }
     }
 
@@ -417,17 +432,8 @@ fn parse_worktree_list(bytes: &[u8]) -> Result<Vec<WorktreeInfo>> {
     Ok(worktrees)
 }
 
-/// Working tree status information.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct WorktreeStatus {
-    pub has_uncommitted_changes: bool,
-    pub modified_count: usize,
-    pub deleted_count: usize,
-    pub untracked_count: usize,
-}
-
 /// Get the status of a worktree.
-pub(crate) fn worktree_status(worktree_path: &std::path::Path) -> Result<WorktreeStatus> {
+pub(crate) fn worktree_status(worktree_path: &std::path::Path) -> Result<WorkspaceStatus> {
     let output = Command::new("git")
         .args(["status", "--porcelain"])
         .current_dir(worktree_path)
@@ -440,7 +446,7 @@ pub(crate) fn worktree_status(worktree_path: &std::path::Path) -> Result<Worktre
     parse_status_output(&output.stdout)
 }
 
-fn parse_status_output(bytes: &[u8]) -> Result<WorktreeStatus> {
+fn parse_status_output(bytes: &[u8]) -> Result<WorkspaceStatus> {
     let text = String::from_utf8_lossy(bytes);
     let mut modified_count = 0;
     let mut deleted_count = 0;
@@ -466,7 +472,7 @@ fn parse_status_output(bytes: &[u8]) -> Result<WorktreeStatus> {
 
     let has_uncommitted_changes = modified_count > 0 || deleted_count > 0 || untracked_count > 0;
 
-    Ok(WorktreeStatus {
+    Ok(WorkspaceStatus {
         has_uncommitted_changes,
         modified_count,
         deleted_count,
@@ -474,17 +480,8 @@ fn parse_status_output(bytes: &[u8]) -> Result<WorktreeStatus> {
     })
 }
 
-/// Unpushed commits information.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct UnpushedCommits {
-    pub has_unpushed: bool,
-    pub count: usize,
-}
-
 /// Check for unpushed commits in a worktree.
-pub(crate) fn worktree_unpushed_commits(
-    worktree_path: &std::path::Path,
-) -> Result<UnpushedCommits> {
+pub(crate) fn worktree_unpushed_commits(worktree_path: &std::path::Path) -> Result<UnpushedInfo> {
     let upstream = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "@{upstream}"])
         .current_dir(worktree_path)
@@ -500,7 +497,7 @@ pub(crate) fn worktree_unpushed_commits(
         .output()?;
 
     if !output.status.success() {
-        return Ok(UnpushedCommits {
+        return Ok(UnpushedInfo {
             has_unpushed: false,
             count: 0,
         });
@@ -509,15 +506,14 @@ pub(crate) fn worktree_unpushed_commits(
     parse_log_output(&output.stdout)
 }
 
-fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<UnpushedCommits> {
-    // Get the current branch name
+fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<UnpushedInfo> {
     let branch_output = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(worktree_path)
         .output()?;
 
     if !branch_output.status.success() {
-        return Ok(UnpushedCommits {
+        return Ok(UnpushedInfo {
             has_unpushed: false,
             count: 0,
         });
@@ -528,22 +524,19 @@ fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<Unpu
         .to_string();
 
     if branch == "HEAD" {
-        // Detached HEAD, no upstream to check against
-        return Ok(UnpushedCommits {
+        return Ok(UnpushedInfo {
             has_unpushed: false,
             count: 0,
         });
     }
 
-    // Get the remote for the current branch
     let remote_output = Command::new("git")
         .args(["config", "--get", &format!("branch.{}.remote", branch)])
         .current_dir(worktree_path)
         .output()?;
 
     if !remote_output.status.success() {
-        // No remote configured for this branch
-        return Ok(UnpushedCommits {
+        return Ok(UnpushedInfo {
             has_unpushed: false,
             count: 0,
         });
@@ -553,7 +546,6 @@ fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<Unpu
         .trim()
         .to_string();
 
-    // Now check if the remote branch exists before logging
     let remote_ref = format!("{}/{}", remote, branch);
     let check = Command::new("git")
         .args(["rev-parse", "--verify", &remote_ref])
@@ -561,14 +553,12 @@ fn check_unpushed_against_remote(worktree_path: &std::path::Path) -> Result<Unpu
         .output();
 
     if !matches!(check, Ok(ref output) if output.status.success()) {
-        // Remote branch doesn't exist - cannot determine unpushed commits
-        return Ok(UnpushedCommits {
+        return Ok(UnpushedInfo {
             has_unpushed: false,
             count: 0,
         });
     }
 
-    // Finally, check for unpushed commits against the dynamic remote ref
     let output = Command::new("git")
         .args(["log", "--oneline", &format!("{}..HEAD", remote_ref)])
         .current_dir(worktree_path)
@@ -585,7 +575,6 @@ pub(crate) fn get_upstream_branch(worktree_path: &std::path::Path) -> Result<Opt
         .output()?;
 
     if !upstream.status.success() {
-        // This fails if no upstream is configured, which is a valid case.
         return Ok(None);
     }
 
@@ -597,10 +586,10 @@ pub(crate) fn get_upstream_branch(worktree_path: &std::path::Path) -> Result<Opt
     }
 }
 
-fn parse_log_output(bytes: &[u8]) -> Result<UnpushedCommits> {
+fn parse_log_output(bytes: &[u8]) -> Result<UnpushedInfo> {
     let lines = parse_output_lines(bytes);
     let count = lines.len();
-    Ok(UnpushedCommits {
+    Ok(UnpushedInfo {
         has_unpushed: count > 0,
         count,
     })
@@ -612,8 +601,6 @@ mod impure_tests {
 
     #[test]
     fn test_is_inside_repo() {
-        // This test depends on the environment
-        // Just verify it doesn't panic
         let _ = is_inside_repo();
     }
 }

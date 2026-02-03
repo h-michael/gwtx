@@ -1,32 +1,39 @@
+//! Remove worktree/workspace command implementation.
+//!
+//! Removes git worktrees or jj workspaces with safety checks for uncommitted changes
+//! and unpushed commits. Supports interactive selection and dry-run mode.
+
 use crate::cli::RemoveArgs;
 use crate::color::{self, ColorConfig};
 use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::error::{Error, Result};
-use crate::git::{self, WorktreeInfo};
 use crate::hook::{self, HookEnv};
 use crate::interactive::{SafetyWarning, run_remove_confirmation, run_remove_selection};
 use crate::output::Output;
 use crate::prompt;
+use crate::vcs::{self, WorkspaceInfo};
 
 use std::path::PathBuf;
 
 pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
     let output = Output::new(args.quiet, color);
 
-    if !git::is_inside_repo() {
-        return Err(Error::NotInGitRepo);
+    let provider = vcs::get_provider()?;
+
+    if !provider.is_inside_repo() {
+        return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = git::repository_root()?;
+    let repo_root = provider.repository_root()?;
 
-    // Get main worktree path for trust operations
-    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
+    // Get main workspace path for trust operations
+    let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
 
     let config =
         load_config_with_trust_check(&repo_root, &main_worktree_path, true, TrustHint::None)?;
     color::set_cli_theme(&config.ui.colors);
 
-    let worktrees = git::list_worktrees()?;
+    let worktrees = provider.list_workspaces()?;
 
     let targets = if args.interactive {
         select_worktrees_interactively(&worktrees)?
@@ -51,7 +58,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
     }
 
     let warnings = if !args.force {
-        collect_safety_warnings(&targets)?
+        collect_safety_warnings(&targets, provider.as_ref())?
     } else {
         vec![]
     };
@@ -105,6 +112,9 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
             worktree_name,
             branch: None, // Branch info not available for remove
             repo_root: repo_root.to_string_lossy().to_string(),
+            vcs_type: provider.name().to_string(),
+            change_id: None,
+            commit_id: None,
             hook_shell,
         };
 
@@ -123,7 +133,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
             output.dry_run(&format!("Would remove: {}", path.display()));
         } else {
             let use_force = args.force || !warnings.is_empty();
-            git::worktree_remove_checked(path, use_force)?;
+            provider.workspace_remove_checked(path, use_force)?;
             output.remove(path);
         }
 
@@ -150,7 +160,7 @@ pub(crate) fn run(args: RemoveArgs, color: ColorConfig) -> Result<()> {
     Ok(())
 }
 
-fn select_worktrees_interactively(worktrees: &[WorktreeInfo]) -> Result<Vec<PathBuf>> {
+fn select_worktrees_interactively(worktrees: &[WorkspaceInfo]) -> Result<Vec<PathBuf>> {
     // Clear screen before entering interactive mode
     prompt::clear_screen_interactive()?;
 
@@ -158,7 +168,7 @@ fn select_worktrees_interactively(worktrees: &[WorktreeInfo]) -> Result<Vec<Path
     Ok(paths)
 }
 
-fn find_current_worktree(worktrees: &[WorktreeInfo]) -> Result<PathBuf> {
+fn find_current_worktree(worktrees: &[WorkspaceInfo]) -> Result<PathBuf> {
     let current_dir = std::env::current_dir()?;
     let current_dir = current_dir
         .canonicalize()
@@ -173,7 +183,7 @@ fn find_current_worktree(worktrees: &[WorktreeInfo]) -> Result<PathBuf> {
     Err(Error::NotInWorktree)
 }
 
-fn resolve_worktree_paths(paths: &[PathBuf], worktrees: &[WorktreeInfo]) -> Result<Vec<PathBuf>> {
+fn resolve_worktree_paths(paths: &[PathBuf], worktrees: &[WorkspaceInfo]) -> Result<Vec<PathBuf>> {
     let mut resolved = Vec::new();
 
     for path in paths {
@@ -197,7 +207,7 @@ fn resolve_worktree_paths(paths: &[PathBuf], worktrees: &[WorktreeInfo]) -> Resu
     Ok(resolved)
 }
 
-fn is_main_worktree(path: &PathBuf, worktrees: &[WorktreeInfo]) -> bool {
+fn is_main_worktree(path: &PathBuf, worktrees: &[WorkspaceInfo]) -> bool {
     worktrees
         .iter()
         .find(|wt| &wt.path == path)
@@ -205,12 +215,15 @@ fn is_main_worktree(path: &PathBuf, worktrees: &[WorktreeInfo]) -> bool {
         .unwrap_or(false)
 }
 
-fn collect_safety_warnings(targets: &[PathBuf]) -> Result<Vec<SafetyWarning>> {
+fn collect_safety_warnings(
+    targets: &[PathBuf],
+    provider: &dyn vcs::VcsProvider,
+) -> Result<Vec<SafetyWarning>> {
     let mut warnings = Vec::new();
 
     for path in targets {
-        let status = git::worktree_status(path)?;
-        let unpushed = git::worktree_unpushed_commits(path)?;
+        let status = provider.workspace_status(path)?;
+        let unpushed = provider.workspace_unpushed(path)?;
 
         if status.has_uncommitted_changes || unpushed.has_unpushed {
             warnings.push(SafetyWarning {

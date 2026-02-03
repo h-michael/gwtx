@@ -1,17 +1,22 @@
+//! List worktrees/workspaces command implementation.
+//!
+//! Lists all git worktrees or jj workspaces with detailed information including
+//! branch/bookmark, commit hash, and status indicators.
+
 use crate::cli::ListArgs;
 use crate::color::{self, ColorConfig, ColorScheme};
 use crate::config;
 use crate::error::{Error, Result};
-use crate::git::{self, UnpushedCommits, WorktreeInfo, WorktreeStatus};
 use crate::output::Output;
+use crate::vcs::{self, UnpushedInfo, WorkspaceInfo, WorkspaceStatus};
 
-/// Enriched worktree info for display purposes.
-struct DisplayWorktree {
+/// Enriched workspace info for display purposes.
+struct DisplayWorkspace {
     path: String,
     branch: String,
     head: String,
-    status: WorktreeStatus,
-    unpushed: UnpushedCommits,
+    status: WorkspaceStatus,
+    unpushed: UnpushedInfo,
     upstream: Option<String>,
     is_locked: bool,
 }
@@ -19,66 +24,71 @@ struct DisplayWorktree {
 pub(crate) fn run(args: ListArgs, color: ColorConfig) -> Result<()> {
     let output = Output::new(false, color);
 
-    if !git::is_inside_repo() {
-        return Err(Error::NotInGitRepo);
+    let provider = vcs::get_provider()?;
+
+    if !provider.is_inside_repo() {
+        return Err(Error::NotInAnyRepo);
     }
 
-    let repo_root = git::repository_root()?;
+    let repo_root = provider.repository_root()?;
     if let Ok(config) = config::load_merged(&repo_root) {
         color::set_cli_theme(&config.ui.colors);
     }
 
-    let worktrees = git::list_worktrees()?;
+    let workspaces = provider.list_workspaces()?;
 
     if args.path_only {
-        print_path_only(&worktrees, &output, args.header);
+        print_path_only(&workspaces, &output, args.header);
         return Ok(());
     }
 
     // Pre-fetch all data before printing
-    let display_data = enrich_worktrees(&worktrees)?;
+    let display_data = enrich_workspaces(&workspaces, provider.as_ref())?;
 
     // Calculate max path length and max branch length for alignment
-    let (max_path, max_branch) = display_data.iter().fold((0, 0), |(max_p, max_b), wt| {
-        (max_p.max(wt.path.len()), max_b.max(wt.branch.len()))
+    let (max_path, max_branch) = display_data.iter().fold((0, 0), |(max_p, max_b), ws| {
+        (max_p.max(ws.path.len()), max_b.max(ws.branch.len()))
     });
 
     if args.header {
         print_header(&output, max_path, max_branch, color);
     }
 
-    for wt in display_data {
-        display_worktree(&wt, &output, max_path, max_branch, color);
+    for ws in display_data {
+        display_workspace(&ws, &output, max_path, max_branch, color);
     }
 
     Ok(())
 }
 
-fn print_path_only(worktrees: &[WorktreeInfo], output: &Output, header: bool) {
+fn print_path_only(workspaces: &[WorkspaceInfo], output: &Output, header: bool) {
     if header {
         output.list("PATH");
     }
-    for wt in worktrees {
-        output.list(&wt.path.display().to_string());
+    for ws in workspaces {
+        output.list(&ws.path.display().to_string());
     }
 }
 
-fn enrich_worktrees(worktrees: &[WorktreeInfo]) -> Result<Vec<DisplayWorktree>> {
+fn enrich_workspaces(
+    workspaces: &[WorkspaceInfo],
+    provider: &dyn vcs::VcsProvider,
+) -> Result<Vec<DisplayWorkspace>> {
     let mut display_data = Vec::new();
-    for wt in worktrees {
+    for ws in workspaces {
         // Get status and unpushed commits (best effort)
-        let status = git::worktree_status(&wt.path).unwrap_or_default();
-        let unpushed = git::worktree_unpushed_commits(&wt.path).unwrap_or_default();
-        let upstream = git::get_upstream_branch(&wt.path).unwrap_or(None);
+        let status = provider.workspace_status(&ws.path).unwrap_or_default();
+        let unpushed = provider.workspace_unpushed(&ws.path).unwrap_or_default();
+        let upstream = provider.get_upstream(&ws.path).unwrap_or(None);
 
-        display_data.push(DisplayWorktree {
-            path: wt.path.display().to_string(),
-            branch: branch_display(&wt.branch),
-            head: wt.head.clone(),
+        display_data.push(DisplayWorkspace {
+            path: ws.path.display().to_string(),
+            branch: branch_display(&ws.branch),
+            head: ws.head.clone(),
             status,
             unpushed,
             upstream,
-            is_locked: wt.is_locked,
+            is_locked: ws.is_locked,
         });
     }
     Ok(display_data)
@@ -103,31 +113,31 @@ fn print_header(output: &Output, max_path: usize, max_branch: usize, color: Colo
     }
 }
 
-fn display_worktree(
-    wt: &DisplayWorktree,
+fn display_workspace(
+    ws: &DisplayWorkspace,
     output: &Output,
     max_path: usize,
     max_branch: usize,
     color: ColorConfig,
 ) {
-    let short_hash = wt.head.chars().take(7).collect::<String>();
-    let status_str = format_status(&wt.status, &wt.unpushed, &wt.upstream, wt.is_locked);
+    let short_hash = ws.head.chars().take(7).collect::<String>();
+    let status_str = format_status(&ws.status, &ws.unpushed, &ws.upstream, ws.is_locked);
 
     let line = if color.is_enabled() {
         format!(
             "{path:<p_width$} {branch} {hash} {status}",
-            path = wt.path,
+            path = ws.path,
             p_width = max_path,
-            branch = ColorScheme::branch(&format!("{:<width$}", wt.branch, width = max_branch)),
+            branch = ColorScheme::branch(&format!("{:<width$}", ws.branch, width = max_branch)),
             hash = ColorScheme::hash(&format!("{:<width$}", short_hash, width = 7)),
             status = ColorScheme::dimmed(&status_str),
         )
     } else {
         format!(
             "{path:<p_width$} {branch:<b_width$} {hash:<c_width$} {status}",
-            path = wt.path,
+            path = ws.path,
             p_width = max_path,
-            branch = wt.branch,
+            branch = ws.branch,
             b_width = max_branch,
             hash = short_hash,
             c_width = 7,
@@ -147,8 +157,8 @@ fn branch_display(branch: &Option<String>) -> String {
 }
 
 fn format_status(
-    status: &crate::git::WorktreeStatus,
-    unpushed: &crate::git::UnpushedCommits,
+    status: &WorkspaceStatus,
+    unpushed: &UnpushedInfo,
     upstream: &Option<String>,
     is_locked: bool,
 ) -> String {
@@ -192,7 +202,7 @@ fn format_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::UnpushedCommits;
+    use crate::vcs::UnpushedInfo;
 
     #[test]
     fn test_branch_display_regular() {
@@ -207,15 +217,15 @@ mod tests {
 
     #[test]
     fn test_format_status_all() {
-        use crate::git::WorktreeStatus;
+        use crate::vcs::WorkspaceStatus;
 
-        let status = WorktreeStatus {
+        let status = WorkspaceStatus {
             has_uncommitted_changes: true,
             modified_count: 2,
             deleted_count: 1,
             untracked_count: 3,
         };
-        let unpushed = UnpushedCommits {
+        let unpushed = UnpushedInfo {
             has_unpushed: true,
             count: 5,
         };
@@ -229,15 +239,15 @@ mod tests {
 
     #[test]
     fn test_format_status_clean() {
-        use crate::git::WorktreeStatus;
+        use crate::vcs::WorkspaceStatus;
 
-        let status = WorktreeStatus {
+        let status = WorkspaceStatus {
             has_uncommitted_changes: false,
             modified_count: 0,
             deleted_count: 0,
             untracked_count: 0,
         };
-        let unpushed = UnpushedCommits {
+        let unpushed = UnpushedInfo {
             has_unpushed: false,
             count: 0,
         };

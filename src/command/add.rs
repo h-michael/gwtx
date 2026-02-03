@@ -1,14 +1,19 @@
+//! Add worktree/workspace command implementation.
+//!
+//! Creates a new git worktree or jj workspace with automated setup from `.gwtx.yaml`.
+//! Supports both interactive and non-interactive modes, with rollback on failure.
+
 use crate::cli::AddArgs;
 use crate::color::{self, ColorConfig};
 use crate::command::trust_check::{TrustHint, load_config_with_trust_check};
 use crate::config::{self, Config, Link, OnConflict};
 use crate::error::{Error, Result};
-use crate::git;
 use crate::hook::{self, HookEnv};
 use crate::interactive;
 use crate::interactive::ConflictChoice;
 use crate::operation::{self, ConflictAction, check_conflict, create_directory, resolve_conflict};
 use crate::output::Output;
+use crate::vcs::{self, VcsProvider};
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -17,16 +22,18 @@ use std::path::{Path, PathBuf};
 pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
     let output = Output::new(args.quiet, color);
 
-    // Check if we're in a git repository
-    if !git::is_inside_repo() {
-        return Err(Error::NotInGitRepo);
+    let provider = vcs::get_provider()?;
+
+    // Check if we're in a repository
+    if !provider.is_inside_repo() {
+        return Err(Error::NotInAnyRepo);
     }
 
     // Get repository root
-    let repo_root = git::repository_root()?;
+    let repo_root = provider.repository_root()?;
 
-    // Get main worktree path for trust operations
-    let main_worktree_path = git::main_worktree_path_for(&repo_root)?;
+    // Get main workspace path for trust operations
+    let main_worktree_path = provider.main_workspace_path_for(&repo_root)?;
 
     let config = load_config_with_trust_check(
         &repo_root,
@@ -40,7 +47,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
     // Handle interactive mode
     let worktree_path = if args.interactive {
-        run_interactive(&mut args, &config)?
+        run_interactive(&mut args, &config, provider.as_ref())?
     } else {
         // Non-interactive: path is optional if config provides it
         let path = if let Some(path) = args.path.clone() {
@@ -56,7 +63,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 
             let generated = config
                 .worktree
-                .generate_path(branch, &git::repository_name()?)
+                .generate_path(branch, &provider.repository_name()?)
                 .ok_or(Error::PathRequired)?;
 
             PathBuf::from(generated)
@@ -69,13 +76,15 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         }
     };
 
-    // Skip setup if requested - just run git worktree add
+    // Skip setup if requested - just run workspace add
     if args.no_setup {
         if !args.dry_run {
-            git::worktree_add(&args, &worktree_path)?;
+            provider.workspace_add(&args, &worktree_path)?;
         } else {
             output.dry_run(&format!(
-                "Would run: git worktree add {}",
+                "Would run: {} {} add {}",
+                provider.name(),
+                provider.workspace_type(),
                 worktree_path.display()
             ));
         }
@@ -138,6 +147,9 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         worktree_name,
         branch,
         repo_root: repo_root.to_string_lossy().to_string(),
+        vcs_type: provider.name().to_string(),
+        change_id: None,
+        commit_id: None,
         hook_shell,
     };
 
@@ -152,22 +164,31 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         }
     }
 
-    // Run git worktree add
+    // Run workspace add
     if !args.dry_run {
-        git::worktree_add(&args, &worktree_path)?;
+        provider.workspace_add(&args, &worktree_path)?;
     } else {
         output.dry_run(&format!(
-            "Would run: git worktree add {}",
+            "Would run: {} {} add {}",
+            provider.name(),
+            provider.workspace_type(),
             worktree_path.display()
         ));
     }
 
     // Process links and copies with rollback on failure
-    if let Err(e) = run_setup(&args, &config, &repo_root, &worktree_path, &output) {
-        // Rollback: remove the worktree on failure
+    if let Err(e) = run_setup(
+        &args,
+        &config,
+        &repo_root,
+        &worktree_path,
+        &output,
+        provider.as_ref(),
+    ) {
+        // Rollback: remove the workspace on failure
         if !args.dry_run {
-            eprintln!("Setup failed, rolling back worktree creation...");
-            let _ = git::worktree_remove(&worktree_path, true);
+            eprintln!("Setup failed, rolling back workspace creation...");
+            let _ = provider.workspace_remove(&worktree_path, true);
         }
         return Err(e);
     }
@@ -243,13 +264,17 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
 }
 
 /// Run interactive mode to select branch and path.
-fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
+fn run_interactive(
+    args: &mut AddArgs,
+    config: &Config,
+    provider: &dyn VcsProvider,
+) -> Result<PathBuf> {
     let current_dir = std::env::current_dir()?;
-    let local_branches = git::list_branches()?;
-    let remote_branches = git::list_remote_branches()?;
+    let local_branches = provider.list_branches()?;
+    let remote_branches = provider.list_remote_branches()?;
 
     let suggest_branch_name = config.worktree.branch_template.as_ref().map(|_| {
-        let repository = git::repository_name().unwrap_or_default();
+        let repository = provider.repository_name().unwrap_or_default();
         let worktree = config.worktree.clone();
         std::sync::Arc::new(move |commitish: &str| {
             let env = config::BranchTemplateEnv {
@@ -261,20 +286,20 @@ fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
     });
 
     let suggest_path = {
-        let repository = git::repository_name().unwrap_or_default();
+        let repository = provider.repository_name().unwrap_or_default();
         let worktree = config.worktree.clone();
         std::sync::Arc::new(move |branch: &str| worktree.generate_path(branch, &repository))
             as std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>
     };
 
-    let worktrees = git::list_worktrees()?;
+    let worktrees = provider.list_workspaces()?;
     let mut used_branches = std::collections::HashMap::new();
     let mut existing_worktrees = Vec::new();
     for worktree in worktrees {
-        if let Some(branch) = worktree.branch.as_ref() {
-            if let Some(name) = branch.strip_prefix("refs/heads/") {
-                used_branches.insert(name.to_string(), worktree.path.clone());
-            }
+        if let Some(branch) = worktree.branch.as_ref()
+            && let Some(name) = branch.strip_prefix("refs/heads/")
+        {
+            used_branches.insert(name.to_string(), worktree.path.clone());
         }
         let branch = worktree
             .branch
@@ -286,6 +311,24 @@ fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
         });
     }
 
+    // Capture VCS kind for use in closures (providers are unit structs, cheap to recreate)
+    let vcs_kind = provider.kind();
+    let fetch_log = std::sync::Arc::new(move |commitish: &str, limit: usize| {
+        let provider: Box<dyn VcsProvider> = match vcs_kind {
+            vcs::VcsKind::Git => Box::new(vcs::GitProvider),
+            vcs::VcsKind::Jj | vcs::VcsKind::JjColocated => Box::new(vcs::JjProvider),
+        };
+        provider.log_oneline(commitish, limit)
+    });
+
+    let validate_branch_name = std::sync::Arc::new(move |name: &str| {
+        let provider: Box<dyn VcsProvider> = match vcs_kind {
+            vcs::VcsKind::Git => Box::new(vcs::GitProvider),
+            vcs::VcsKind::Jj | vcs::VcsKind::JjColocated => Box::new(vcs::JjProvider),
+        };
+        provider.validate_branch_name(name)
+    });
+
     let result = interactive::run_add_interactive(interactive::AddInteractiveInput {
         local_branches,
         remote_branches,
@@ -293,10 +336,11 @@ fn run_interactive(args: &mut AddArgs, config: &Config) -> Result<PathBuf> {
         current_dir: current_dir.clone(),
         existing_worktrees,
         log_limit: 10,
-        fetch_log: std::sync::Arc::new(git::log_oneline),
+        fetch_log,
         initial_path: args.path.clone(),
         suggest_path: Some(suggest_path),
         suggest_branch_name,
+        validate_branch_name,
         theme: interactive::UiTheme::from_colors(&config.ui.colors),
     })?;
 
@@ -328,6 +372,7 @@ fn run_setup(
     repo_root: &Path,
     worktree_path: &Path,
     output: &Output,
+    provider: &dyn VcsProvider,
 ) -> Result<()> {
     let mut conflict_mode_override: Option<OnConflict> = args.on_conflict.map(|m| match m {
         crate::cli::OnConflictArg::Abort => OnConflict::Abort,
@@ -350,7 +395,7 @@ fn run_setup(
 
     // Process symlinks (expand glob patterns first)
     for link in &config.link {
-        let expanded_links = expand_link(link, repo_root)?;
+        let expanded_links = expand_link(link, repo_root, provider)?;
         for expanded_link in expanded_links {
             let params = OperationParams {
                 source: &repo_root.join(&expanded_link.source),
@@ -473,8 +518,8 @@ fn contains_glob_pattern(path: &Path) -> bool {
 }
 
 /// Expand a link entry with glob patterns into multiple concrete link entries.
-/// If ignore_tracked is true, filter out git-tracked files.
-fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
+/// If ignore_tracked is true, filter out VCS-tracked files.
+fn expand_link(link: &Link, repo_root: &Path, provider: &dyn VcsProvider) -> Result<Vec<Link>> {
     let source_str = link.source.to_string_lossy();
 
     if !contains_glob_pattern(&link.source) {
@@ -491,9 +536,12 @@ fn expand_link(link: &Link, repo_root: &Path) -> Result<Vec<Link>> {
         })?;
     let matcher = glob.compile_matcher();
 
-    // Get git-tracked files if needed
+    // Get VCS-tracked files if needed
     let tracked_files: HashSet<PathBuf> = if link.ignore_tracked {
-        git::list_tracked_files(repo_root)?.into_iter().collect()
+        provider
+            .list_tracked_files(repo_root)?
+            .into_iter()
+            .collect()
     } else {
         HashSet::new()
     };
@@ -601,7 +649,8 @@ mod impure_tests {
             ignore_tracked: false,
         };
 
-        let result = expand_link(&link, repo_root).unwrap();
+        let provider = vcs::GitProvider;
+        let result = expand_link(&link, repo_root, &provider).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].source, PathBuf::from("test.txt"));
     }
@@ -626,7 +675,8 @@ mod impure_tests {
             ignore_tracked: false,
         };
 
-        let result = expand_link(&link, repo_root).unwrap();
+        let provider = vcs::GitProvider;
+        let result = expand_link(&link, repo_root, &provider).unwrap();
         assert_eq!(result.len(), 2);
 
         let mut sources: Vec<_> = result.iter().map(|l| l.source.clone()).collect();
@@ -698,7 +748,8 @@ mod impure_tests {
             ignore_tracked: true,
         };
 
-        let result = expand_link(&link, repo_root).unwrap();
+        let provider = vcs::GitProvider;
+        let result = expand_link(&link, repo_root, &provider).unwrap();
 
         // Should only include untracked file
         // Note: This test may be flaky in some environments
@@ -732,7 +783,8 @@ mod impure_tests {
             ignore_tracked: false,
         };
 
-        let result = expand_link(&link, repo_root).unwrap();
+        let provider = vcs::GitProvider;
+        let result = expand_link(&link, repo_root, &provider).unwrap();
 
         // Should return only the directory, not its contents
         assert_eq!(result.len(), 1);
@@ -762,7 +814,8 @@ mod impure_tests {
             ignore_tracked: false,
         };
 
-        let result = expand_link(&link, repo_root).unwrap();
+        let provider = vcs::GitProvider;
+        let result = expand_link(&link, repo_root, &provider).unwrap();
 
         // Should return only the directories, not their contents
         assert_eq!(result.len(), 2);

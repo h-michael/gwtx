@@ -6,12 +6,19 @@ use clap_complete::Shell;
 /// CLI arguments.
 #[derive(Parser, Debug)]
 #[command(name = "gwtx")]
-#[command(about = "git worktree extra - enhance git worktree with automated setup")]
+#[command(
+    about = "git/jj worktree extra - enhance git worktree and jj workspace with automated setup"
+)]
 #[command(version = VERSION_STRING)]
 #[command(after_help = "\
+VCS SUPPORT:
+    gwtx automatically detects and supports:
+    - Git repositories (uses git worktree commands)
+    - jj (Jujutsu) repositories (uses jj workspace commands)
+    - Colocated repositories (jj on top of git)
+
 CONFIGURATION:
     gwtx reads .gwtx.yaml from the repository root for setup instructions.
-    See https://github.com/h-michael/git-setup-worktree for config format.
 
 COLOR OUTPUT:
     gwtx uses colored output for better readability. Control with:
@@ -74,21 +81,21 @@ const VERSION_STRING: &str = env!("GWTX_VERSION_LABEL");
 /// Available subcommands.
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
-    /// Add a new worktree with setup
+    /// Add a new worktree/workspace with setup
     Add(AddArgs),
 
-    /// Remove worktrees with safety checks
+    /// Remove worktrees/workspaces with safety checks
     #[command(visible_alias = "rm")]
     Remove(RemoveArgs),
 
-    /// List all worktrees
+    /// List all worktrees/workspaces
     #[command(visible_alias = "ls")]
     List(ListArgs),
 
-    /// Select a worktree and print its path
+    /// Select a worktree/workspace and print its path
     Path(PathArgs),
 
-    /// Change directory to a selected worktree (requires shell integration)
+    /// Change directory to a selected worktree/workspace (requires shell integration)
     Cd,
 
     /// Manage .gwtx.yaml configuration
@@ -242,12 +249,17 @@ pub(crate) enum ConfigCommand {
 /// Arguments for the `add` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
+VCS SUPPORT:
+    Works with both git worktree and jj workspace:
+    - Git: Creates worktree using `git worktree add`
+    - jj:  Creates workspace using `jj workspace add`
+
 EXAMPLES:
     gwtx add ../new-worktree-path
-        Create worktree and run setup from .gwtx.yaml
+        Create worktree/workspace and run setup from .gwtx.yaml
 
     gwtx add -b new-branch-name ../new-worktree-path
-        Create new branch and worktree with setup
+        Create new branch (git) or bookmark (jj) with worktree/workspace
 
     gwtx add --interactive
         Select branch and path interactively
@@ -256,7 +268,7 @@ EXAMPLES:
         Preview what would be done without executing
 
     gwtx add --no-setup ../quick
-        Create worktree without running setup
+        Create worktree/workspace without running setup
 
 CONFLICT MODES:
     abort      Stop immediately when a conflict is found (default in non-interactive)
@@ -268,10 +280,10 @@ ENVIRONMENT VARIABLES:
     GWTX_ON_CONFLICT    Default conflict resolution mode (e.g., GWTX_ON_CONFLICT=backup)
     GWTHOOK_SHELL       Windows-only hook shell override (pwsh, powershell, bash, cmd, wsl)")]
 pub(crate) struct AddArgs {
-    /// Path for the new worktree (required unless --interactive)
+    /// Path for the new worktree/workspace (required unless --interactive)
     pub path: Option<PathBuf>,
 
-    /// Branch or commit to checkout
+    /// Branch or commit to checkout (git) / revision (jj)
     pub commitish: Option<String>,
 
     // --- gwtx Options ---
@@ -292,7 +304,7 @@ pub(crate) struct AddArgs {
     #[arg(long, help_heading = "gwtx Options")]
     pub dry_run: bool,
 
-    /// Skip .gwtx.yaml setup, run git worktree add only
+    /// Skip .gwtx.yaml setup, run worktree/workspace add only
     #[arg(long, help_heading = "gwtx Options")]
     pub no_setup: bool,
 
@@ -336,7 +348,7 @@ pub(crate) struct AddArgs {
     #[arg(short, long, help_heading = "git worktree Options")]
     pub force: bool,
 
-    /// Detach HEAD in the new worktree
+    /// Detach HEAD in the new worktree/workspace
     #[arg(short, long, help_heading = "git worktree Options")]
     pub detach: bool,
 
@@ -344,7 +356,7 @@ pub(crate) struct AddArgs {
     #[arg(long, help_heading = "git worktree Options")]
     pub no_checkout: bool,
 
-    /// Lock the worktree after creation
+    /// Lock the worktree after creation (git only)
     #[arg(long, help_heading = "git worktree Options")]
     pub lock: bool,
 
@@ -365,7 +377,7 @@ pub(crate) struct AddArgs {
     pub no_guess_remote: bool,
 
     // --- Shared Options ---
-    /// Suppress output from both gwtx and git worktree
+    /// Suppress output
     #[arg(short, long, help_heading = "Shared Options")]
     pub quiet: bool,
 
@@ -387,15 +399,20 @@ pub(crate) struct AddArgs {
 /// Arguments for the `remove` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
+VCS SUPPORT:
+    Works with both git worktree and jj workspace:
+    - Git: Removes worktree using `git worktree remove`
+    - jj:  Forgets workspace using `jj workspace forget`
+
 EXAMPLES:
     gwtx remove ../target-worktree-path
-        Remove worktree with safety checks
+        Remove worktree/workspace with safety checks
 
     gwtx remove --i
-        Select worktrees to remove interactively
+        Select worktrees/workspaces to remove interactively
 
     gwtx remove --current
-        Remove the worktree containing the current directory
+        Remove the worktree/workspace containing the current directory
 
     gwtx remove --dry-run ../target-worktree-path
         Preview what would be removed without executing
@@ -406,19 +423,19 @@ EXAMPLES:
 SAFETY CHECKS:
     By default, gwtx remove warns about:
     - Uncommitted changes (modified/staged files)
-    - Unpushed commits (commits not on remote)
+    - Unpushed commits (git) or commits not on remote bookmarks (jj)
 
     Use --force to skip safety checks and force removal.")]
 pub(crate) struct RemoveArgs {
-    /// Worktree paths to remove (required unless --interactive or --current)
+    /// Worktree/workspace paths to remove (required unless --interactive or --current)
     pub paths: Vec<PathBuf>,
 
     // --- gwtx Options ---
-    /// Interactive mode: select worktrees to remove
+    /// Interactive mode: select worktrees/workspaces to remove
     #[arg(short, long, help_heading = "gwtx Options")]
     pub interactive: bool,
 
-    /// Remove the worktree containing the current directory
+    /// Remove the worktree/workspace containing the current directory
     #[arg(short = 'c', long, help_heading = "gwtx Options")]
     pub current: bool,
 
@@ -446,7 +463,7 @@ pub(crate) struct RemoveArgs {
     pub hook_shell: Option<String>,
 
     // --- git worktree Options ---
-    /// Force removal even if worktree is dirty or locked
+    /// Force removal even if worktree/workspace is dirty or locked
     #[arg(short, long, help_heading = "git worktree Options")]
     pub force: bool,
 
@@ -473,23 +490,34 @@ pub(crate) struct RemoveArgs {
 /// Arguments for the `list` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
+VCS SUPPORT:
+    Works with both git worktree and jj workspace:
+    - Git: Lists worktrees using `git worktree list`
+    - jj:  Lists workspaces using `jj workspace list`
+
 STATUS SYMBOLS:
     *  Uncommitted changes (modified, deleted, or untracked files)
 
+COLUMNS:
+    - Path: Worktree/workspace directory path
+    - Branch: Branch name (git) or bookmark/workspace name (jj)
+    - Commit: Short commit hash or change ID (jj)
+    - Status: Uncommitted changes indicator
+
 EXAMPLES:
     gwtx list
-        List all worktrees with detailed information (branch, commit, status)
+        List all worktrees/workspaces with detailed information
 
     gwtx list --header
         Show header row with column names
 
     gwtx list --path-only
-        List only worktree paths (useful for scripting)
+        List only paths (useful for scripting)
 
     gwtx ls -p --header
         Combine options using the short alias")]
 pub(crate) struct ListArgs {
-    /// Show only worktree paths
+    /// Show only worktree/workspace paths
     #[arg(short, long)]
     pub path_only: bool,
 
@@ -658,20 +686,23 @@ pub(crate) struct InitArgs {
 /// Arguments for the `path` subcommand.
 #[derive(Parser, Debug)]
 #[command(after_help = "\
+VCS SUPPORT:
+    Works with both git worktree and jj workspace.
+
 EXAMPLES:
     gwtx path
-        Select a worktree interactively and print its path
+        Select a worktree/workspace interactively and print its path
 
     gwtx path --main
-        Print the main worktree path (useful for shell integration)
+        Print the main worktree/workspace path (useful for shell integration)
 
     cd \"$(gwtx path)\"
-        Select a worktree and change to it
+        Select a worktree/workspace and change to it
 
     cd \"$(gwtx path --main)\"
-        Change to the main worktree")]
+        Change to the main worktree/workspace")]
 pub(crate) struct PathArgs {
-    /// Print the main worktree path instead of interactive selection
+    /// Print the main worktree/workspace path instead of interactive selection
     #[arg(long)]
     pub main: bool,
 }

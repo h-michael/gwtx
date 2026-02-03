@@ -25,10 +25,10 @@ impl ColorConfig {
             clap::ColorChoice::Auto => {
                 // Check NO_COLOR environment variable (https://no-color.org/)
                 // Standard: "when present and not an empty string"
-                if let Ok(val) = std::env::var("NO_COLOR") {
-                    if !val.is_empty() {
-                        return Self::with_enabled(false);
-                    }
+                if let Ok(val) = std::env::var("NO_COLOR")
+                    && !val.is_empty()
+                {
+                    return Self::with_enabled(false);
                 }
 
                 // Auto: enable color if stdout is a terminal

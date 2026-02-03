@@ -20,11 +20,20 @@ pub(crate) enum Error {
     #[error("Not inside a git repository. Run this command from within a git repository.")]
     NotInGitRepo,
 
+    #[error("Not inside a {vcs} repository. Run this command from within a repository.")]
+    NotInRepo { vcs: String },
+
+    #[error("Not inside a git or jj repository. Run this command from within a repository.")]
+    NotInAnyRepo,
+
     #[error("Path is required. Use -i for interactive mode or provide a path.")]
     PathRequired,
 
     #[error("git worktree add failed:\n{stderr}")]
     GitWorktreeAddFailed { stderr: String },
+
+    #[error("jj workspace add failed:\n{stderr}")]
+    JjWorkspaceAddFailed { stderr: String },
 
     #[error(
         "A source path in '.gwtx.yaml' was not found.\n\n  Path: {path}\n  Reason: This file does not exist at the root of your repository.\n  Fix:    Ensure the path is correct and relative to the repository root."
@@ -64,32 +73,38 @@ pub(crate) enum Error {
     #[error("gwtx cd requires shell integration")]
     CdRequiresShellIntegration,
 
-    #[error("The main worktree cannot be removed.\n  Path: {}", .path.display())]
+    #[error("The main worktree/workspace cannot be removed.\n  Path: {}", .path.display())]
     CannotRemoveMainWorktree { path: PathBuf },
 
-    #[error("No worktrees available to remove")]
+    #[error("No worktrees/workspaces available to remove")]
     NoWorktreesToRemove,
 
-    #[error("No worktrees found")]
+    #[error("No worktrees/workspaces found")]
     NoWorktreesFound,
 
-    #[error("Current directory is not inside any worktree")]
+    #[error("Current directory is not inside any worktree/workspace")]
     NotInWorktree,
 
-    #[error("Worktree has uncommitted changes: {}\n  Use --force to remove anyway.", .path.display())]
+    #[error("Has uncommitted changes: {}\n  Use --force to remove anyway.", .path.display())]
     WorktreeHasUncommittedChanges { path: PathBuf },
 
-    #[error("Worktree has unpushed commits: {}\n  Use --force to remove anyway.", .path.display())]
+    #[error("Has unpushed commits: {}\n  Use --force to remove anyway.", .path.display())]
     WorktreeHasUnpushedCommits { path: PathBuf },
 
-    #[error("Worktree not found: {path}")]
+    #[error("Worktree/workspace not found: {path}")]
     WorktreeNotFound { path: PathBuf },
 
     #[error("git worktree remove failed:\n{stderr}")]
     GitWorktreeRemoveFailed { stderr: String },
 
+    #[error("jj workspace forget failed:\n{stderr}")]
+    JjWorkspaceForgetFailed { stderr: String },
+
     #[error("git command failed: {command}\n{stderr}")]
     GitCommandFailed { command: String, stderr: String },
+
+    #[error("jj command failed: {command}\n{stderr}")]
+    JjCommandFailed { command: String, stderr: String },
 
     #[cfg(windows)]
     #[error(

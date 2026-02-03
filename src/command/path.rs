@@ -1,20 +1,27 @@
+//! Path selection command implementation.
+//!
+//! Interactively selects a worktree/workspace and prints its path to stdout.
+//! Works without shell integration, useful for scripting: `cd "$(gwtx path)"`
+
 use crate::cli::PathArgs;
 use crate::error::{Error, Result};
-use crate::git;
 use crate::interactive::run_path_interactive;
+use crate::vcs;
 
 pub(crate) fn run(args: PathArgs) -> Result<()> {
-    if !git::is_inside_repo() {
-        return Err(Error::NotInGitRepo);
+    let provider = vcs::get_provider()?;
+
+    if !provider.is_inside_repo() {
+        return Err(Error::NotInAnyRepo);
     }
 
     if args.main {
-        let repo_root = git::repository_root()?;
-        let main_path = git::main_worktree_path_for(&repo_root)?;
+        let repo_root = provider.repository_root()?;
+        let main_path = provider.main_workspace_path_for(&repo_root)?;
         println!("{}", main_path.display());
     } else {
-        let worktrees = git::list_worktrees()?;
-        let selected = run_path_interactive(&worktrees)?;
+        let workspaces = provider.list_workspaces()?;
+        let selected = run_path_interactive(&workspaces)?;
         println!("{}", selected.display());
     }
     Ok(())

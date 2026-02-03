@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::git::WorktreeInfo;
+use crate::vcs::WorkspaceInfo;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use indexmap::IndexSet;
@@ -23,8 +23,6 @@ use super::{
 pub(crate) struct WorktreeEntry {
     pub display: String,
     pub path: PathBuf,
-    #[allow(dead_code)]
-    pub is_current: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,50 +34,49 @@ pub(crate) enum SelectMode {
 /// Builds a list of worktree entries for display.
 ///
 /// # Arguments
-/// * `worktrees` - List of worktree information from git
-/// * `include_main` - If true, includes the main worktree; if false, filters it out
+/// * `workspaces` - List of workspace information from VCS
+/// * `include_main` - If true, includes the main workspace; if false, filters it out
 /// * `current_dir` - Optional current directory to mark with [current]
 ///
 /// # Display format
 /// Each entry shows: `{path} ({branch})[main][locked][current]`
 /// - `[main]` indicator only shown when `include_main` is true
-/// - `[locked]` indicator shown for locked worktrees
-/// - `[current]` indicator shown for the worktree containing current_dir
+/// - `[locked]` indicator shown for locked workspaces
+/// - `[current]` indicator shown for the workspace containing current_dir
 pub(crate) fn build_worktree_entries(
-    worktrees: &[WorktreeInfo],
+    workspaces: &[WorkspaceInfo],
     include_main: bool,
     current_dir: Option<&std::path::Path>,
 ) -> Vec<WorktreeEntry> {
-    worktrees
+    workspaces
         .iter()
-        .filter(|wt| include_main || !wt.is_main)
-        .map(|wt| {
-            let branch_info = wt
+        .filter(|ws| include_main || !ws.is_main)
+        .map(|ws| {
+            let branch_info = ws
                 .branch
                 .as_ref()
                 .and_then(|b| b.strip_prefix("refs/heads/"))
                 .unwrap_or("(detached)");
-            let main_info = if include_main && wt.is_main {
+            let main_info = if include_main && ws.is_main {
                 " [main]"
             } else {
                 ""
             };
-            let lock_info = if wt.is_locked { " [locked]" } else { "" };
+            let lock_info = if ws.is_locked { " [locked]" } else { "" };
             let is_current = current_dir
-                .map(|dir| dir.starts_with(&wt.path))
+                .map(|dir| dir.starts_with(&ws.path))
                 .unwrap_or(false);
             let current_info = if is_current { " [current]" } else { "" };
             WorktreeEntry {
                 display: format!(
                     "{} ({}){}{}{}",
-                    wt.path.display(),
+                    ws.path.display(),
                     branch_info,
                     main_info,
                     lock_info,
                     current_info
                 ),
-                path: wt.path.clone(),
-                is_current,
+                path: ws.path.clone(),
             }
         })
         .collect()
@@ -419,12 +416,13 @@ mod tests {
 
     #[test]
     fn test_build_worktree_entries_includes_main() {
-        let worktrees = vec![WorktreeInfo {
+        let worktrees = vec![WorkspaceInfo {
             path: PathBuf::from("/repo/.git"),
             head: "abc123".to_string(),
             branch: Some("refs/heads/main".to_string()),
             is_main: true,
             is_locked: false,
+            workspace_name: None,
         }];
 
         let result = build_worktree_entries(&worktrees, true, None);
@@ -436,19 +434,21 @@ mod tests {
     #[test]
     fn test_build_worktree_entries_filters_main() {
         let worktrees = vec![
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/.git"),
                 head: "abc123".to_string(),
                 branch: Some("refs/heads/main".to_string()),
                 is_main: true,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/feature-1"),
                 head: "def456".to_string(),
                 branch: Some("refs/heads/feature-1".to_string()),
                 is_main: false,
                 is_locked: false,
+                workspace_name: None,
             },
         ];
 
@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_build_worktree_entries_empty_list() {
-        let worktrees: Vec<WorktreeInfo> = vec![];
+        let worktrees: Vec<WorkspaceInfo> = vec![];
 
         let result = build_worktree_entries(&worktrees, true, None);
 
@@ -469,12 +469,13 @@ mod tests {
 
     #[test]
     fn test_build_worktree_entries_only_main_returns_empty_when_filtered() {
-        let worktrees = vec![WorktreeInfo {
+        let worktrees = vec![WorkspaceInfo {
             path: PathBuf::from("/repo/.git"),
             head: "abc123".to_string(),
             branch: Some("refs/heads/main".to_string()),
             is_main: true,
             is_locked: false,
+            workspace_name: None,
         }];
 
         let result = build_worktree_entries(&worktrees, false, None);
@@ -485,26 +486,29 @@ mod tests {
     #[test]
     fn test_build_worktree_entries_preserves_order() {
         let worktrees = vec![
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/.git"),
                 head: "abc123".to_string(),
                 branch: Some("refs/heads/main".to_string()),
                 is_main: true,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/feature-1"),
                 head: "def456".to_string(),
                 branch: Some("refs/heads/feature-1".to_string()),
                 is_main: false,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/feature-2"),
                 head: "ghi789".to_string(),
                 branch: Some("refs/heads/feature-2".to_string()),
                 is_main: false,
                 is_locked: false,
+                workspace_name: None,
             },
         ];
 
@@ -518,26 +522,29 @@ mod tests {
     #[test]
     fn test_build_worktree_entries_multiple_with_main_included() {
         let worktrees = vec![
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/.git"),
                 head: "abc123".to_string(),
                 branch: Some("refs/heads/main".to_string()),
                 is_main: true,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/feature-branch"),
                 head: "def456".to_string(),
                 branch: Some("refs/heads/feature".to_string()),
                 is_main: false,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/locked-branch"),
                 head: "ghi789".to_string(),
                 branch: Some("refs/heads/locked".to_string()),
                 is_main: false,
                 is_locked: true,
+                workspace_name: None,
             },
         ];
 
@@ -553,33 +560,37 @@ mod tests {
     #[test]
     fn test_build_worktree_entries_formats_display() {
         let worktrees = vec![
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/.git"),
                 head: "abc123".to_string(),
                 branch: Some("refs/heads/main".to_string()),
                 is_main: true,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/feature-1"),
                 head: "def456".to_string(),
                 branch: Some("refs/heads/feature-1".to_string()),
                 is_main: false,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/feature-2"),
                 head: "ghi789".to_string(),
                 branch: None,
                 is_main: false,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/feature-3"),
                 head: "jkl012".to_string(),
                 branch: Some("refs/heads/feature-3".to_string()),
                 is_main: false,
                 is_locked: true,
+                workspace_name: None,
             },
         ];
 
@@ -593,12 +604,13 @@ mod tests {
 
     #[test]
     fn test_build_worktree_entries_detached_head() {
-        let worktrees = vec![WorktreeInfo {
+        let worktrees = vec![WorkspaceInfo {
             path: PathBuf::from("/repo/detached"),
             head: "abc123".to_string(),
             branch: None,
             is_main: false,
             is_locked: false,
+            workspace_name: None,
         }];
 
         let result = build_worktree_entries(&worktrees, true, None);
@@ -610,19 +622,21 @@ mod tests {
     #[test]
     fn test_build_worktree_entries_current_marker() {
         let worktrees = vec![
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/.git"),
                 head: "abc123".to_string(),
                 branch: Some("refs/heads/main".to_string()),
                 is_main: true,
                 is_locked: false,
+                workspace_name: None,
             },
-            WorktreeInfo {
+            WorkspaceInfo {
                 path: PathBuf::from("/repo/feature-1"),
                 head: "def456".to_string(),
                 branch: Some("refs/heads/feature-1".to_string()),
                 is_main: false,
                 is_locked: false,
+                workspace_name: None,
             },
         ];
 
@@ -632,17 +646,17 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert!(result[0].display.contains("[current]"));
-        assert!(result[0].is_current);
     }
 
     #[test]
     fn test_build_worktree_entries_no_current_marker() {
-        let worktrees = vec![WorktreeInfo {
+        let worktrees = vec![WorkspaceInfo {
             path: PathBuf::from("/repo/feature-1"),
             head: "def456".to_string(),
             branch: Some("refs/heads/feature-1".to_string()),
             is_main: false,
             is_locked: false,
+            workspace_name: None,
         }];
 
         // current_dir is NOT inside this worktree
@@ -651,17 +665,17 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert!(!result[0].display.contains("[current]"));
-        assert!(!result[0].is_current);
     }
 
     #[test]
     fn test_build_worktree_entries_current_marker_none() {
-        let worktrees = vec![WorktreeInfo {
+        let worktrees = vec![WorkspaceInfo {
             path: PathBuf::from("/repo/feature-1"),
             head: "def456".to_string(),
             branch: Some("refs/heads/feature-1".to_string()),
             is_main: false,
             is_locked: false,
+            workspace_name: None,
         }];
 
         // current_dir is None
@@ -669,7 +683,6 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert!(!result[0].display.contains("[current]"));
-        assert!(!result[0].is_current);
     }
 
     // WorktreeEntry and SelectMode tests
@@ -679,17 +692,14 @@ mod tests {
             WorktreeEntry {
                 display: "main".to_string(),
                 path: PathBuf::from("/repo"),
-                is_current: false,
             },
             WorktreeEntry {
                 display: "feature-a".to_string(),
                 path: PathBuf::from("/repo-feature-a"),
-                is_current: false,
             },
             WorktreeEntry {
                 display: "feature-b".to_string(),
                 path: PathBuf::from("/repo-feature-b"),
-                is_current: false,
             },
         ]
     }
@@ -699,11 +709,9 @@ mod tests {
         let entry = WorktreeEntry {
             display: "test-branch".to_string(),
             path: PathBuf::from("/path/to/worktree"),
-            is_current: false,
         };
         assert_eq!(entry.display, "test-branch");
         assert_eq!(entry.path, PathBuf::from("/path/to/worktree"));
-        assert!(!entry.is_current);
     }
 
     #[test]

@@ -12,14 +12,20 @@ use std::process::{Command, Stdio};
 /// Provides context information that can be used in hook commands.
 /// All variables are automatically shell-escaped when expanded.
 pub(crate) struct HookEnv {
-    /// Worktree path
+    /// Worktree/workspace path (unified name for both VCS)
     pub worktree_path: String,
-    /// Worktree directory name
+    /// Worktree/workspace directory name (unified name for both VCS)
     pub worktree_name: String,
-    /// Branch name (if applicable)
+    /// Branch name (git) or bookmark name (jj), if applicable
     pub branch: Option<String>,
     /// Repository root path
     pub repo_root: String,
+    /// VCS type: "git" or "jj"
+    pub vcs_type: String,
+    /// jj-specific: change ID (short form)
+    pub change_id: Option<String>,
+    /// jj-specific: commit ID (short form)
+    pub commit_id: Option<String>,
     /// Windows-only: override hook shell selection
     #[cfg_attr(not(windows), allow(dead_code))]
     pub hook_shell: Option<String>,
@@ -28,11 +34,16 @@ pub(crate) struct HookEnv {
 impl HookEnv {
     /// Expand template variables in a command string.
     ///
-    /// # Supported Variables
-    /// - `{{worktree_path}}`: Full path to the worktree
-    /// - `{{worktree_name}}`: Worktree directory name
-    /// - `{{branch}}`: Branch name (empty if detached or not available)
+    /// # Supported Variables (VCS-agnostic)
+    /// - `{{worktree_path}}` / `{{workspace_path}}`: Full path to the worktree/workspace
+    /// - `{{worktree_name}}` / `{{workspace_name}}`: Directory name
+    /// - `{{branch}}` / `{{bookmark}}`: Branch name (git) or bookmark name (jj)
     /// - `{{repo_root}}`: Repository root path
+    /// - `{{vcs_type}}`: VCS type ("git" or "jj")
+    ///
+    /// # jj-specific Variables
+    /// - `{{change_id}}`: jj change ID (short form, empty for git)
+    /// - `{{commit_id}}`: Commit/revision ID (short form)
     ///
     /// All values are automatically shell-escaped to prevent command injection.
     fn expand_template_with<E>(&self, cmd: &str, escape: E) -> String
@@ -41,15 +52,34 @@ impl HookEnv {
     {
         let mut result = cmd.to_string();
 
-        // Replace template variables with shell-escaped values
+        // VCS-agnostic variables (both names work)
         result = result.replace("{{worktree_path}}", &escape(&self.worktree_path));
+        result = result.replace("{{workspace_path}}", &escape(&self.worktree_path));
         result = result.replace("{{worktree_name}}", &escape(&self.worktree_name));
+        result = result.replace("{{workspace_name}}", &escape(&self.worktree_name));
         result = result.replace("{{repo_root}}", &escape(&self.repo_root));
+        result = result.replace("{{vcs_type}}", &escape(&self.vcs_type));
 
+        // Branch/bookmark (both names work)
         if let Some(branch) = &self.branch {
             result = result.replace("{{branch}}", &escape(branch));
+            result = result.replace("{{bookmark}}", &escape(branch));
         } else {
             result = result.replace("{{branch}}", "");
+            result = result.replace("{{bookmark}}", "");
+        }
+
+        // jj-specific variables
+        if let Some(change_id) = &self.change_id {
+            result = result.replace("{{change_id}}", &escape(change_id));
+        } else {
+            result = result.replace("{{change_id}}", "");
+        }
+
+        if let Some(commit_id) = &self.commit_id {
+            result = result.replace("{{commit_id}}", &escape(commit_id));
+        } else {
+            result = result.replace("{{commit_id}}", "");
         }
 
         result
@@ -681,6 +711,9 @@ mod tests {
             worktree_name: "my-feature".to_string(),
             branch: Some("feature/test".to_string()),
             repo_root: "/path/to/repo".to_string(),
+            vcs_type: "git".to_string(),
+            change_id: None,
+            commit_id: None,
             hook_shell: None,
         };
 
@@ -696,6 +729,9 @@ mod tests {
             worktree_name: "feat'ure".to_string(),
             branch: Some("fix/$bug".to_string()),
             repo_root: "/repo".to_string(),
+            vcs_type: "git".to_string(),
+            change_id: None,
+            commit_id: None,
             hook_shell: None,
         };
 
@@ -717,6 +753,9 @@ mod tests {
             worktree_name: "detached".to_string(),
             branch: None,
             repo_root: "/repo".to_string(),
+            vcs_type: "git".to_string(),
+            change_id: None,
+            commit_id: None,
             hook_shell: None,
         };
 
@@ -731,11 +770,48 @@ mod tests {
             worktree_name: "test".to_string(),
             branch: Some("main".to_string()),
             repo_root: "/repo".to_string(),
+            vcs_type: "git".to_string(),
+            change_id: None,
+            commit_id: None,
             hook_shell: None,
         };
 
         let result = env.expand_template("cd {{worktree_path}} && git checkout {{branch}} && pwd");
         assert!(result.contains("/worktree"));
         assert!(result.contains("main"));
+    }
+
+    #[test]
+    fn test_expand_template_jj_variables() {
+        let env = HookEnv {
+            worktree_path: "/workspace".to_string(),
+            worktree_name: "feature".to_string(),
+            branch: Some("my-bookmark".to_string()),
+            repo_root: "/repo".to_string(),
+            vcs_type: "jj".to_string(),
+            change_id: Some("abc123def456".to_string()),
+            commit_id: Some("xyz789".to_string()),
+            hook_shell: None,
+        };
+
+        // Test jj-specific variables
+        let result = env.expand_template("echo {{change_id}}");
+        assert!(result.contains("abc123def456"));
+
+        let result = env.expand_template("echo {{commit_id}}");
+        assert!(result.contains("xyz789"));
+
+        let result = env.expand_template("echo {{vcs_type}}");
+        assert!(result.contains("jj"));
+
+        // Test alias variables work
+        let result = env.expand_template("cd {{workspace_path}}");
+        assert!(result.contains("/workspace"));
+
+        let result = env.expand_template("echo {{workspace_name}}");
+        assert!(result.contains("feature"));
+
+        let result = env.expand_template("echo {{bookmark}}");
+        assert!(result.contains("my-bookmark"));
     }
 }
