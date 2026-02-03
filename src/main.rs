@@ -3,7 +3,6 @@ mod color;
 mod command;
 mod config;
 mod error;
-mod git;
 mod hook;
 mod init;
 mod interactive;
@@ -11,6 +10,7 @@ mod operation;
 mod output;
 mod prompt;
 mod trust;
+mod vcs;
 
 use crate::color::ColorScheme;
 use std::process::ExitCode;
