@@ -1,5 +1,4 @@
 use crate::error::{Error, Result};
-use crate::git;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -29,6 +28,7 @@ pub(crate) struct BranchChoice {
 type LogFetcher = Arc<dyn Fn(&str, usize) -> Result<Vec<String>> + Send + Sync>;
 type PathSuggester = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 type BranchNameSuggester = Arc<dyn Fn(&str) -> String + Send + Sync>;
+type BranchNameValidator = Arc<dyn Fn(&str) -> Result<Option<String>> + Send + Sync>;
 
 pub(crate) struct AddInteractiveInput {
     pub local_branches: Vec<String>,
@@ -41,6 +41,7 @@ pub(crate) struct AddInteractiveInput {
     pub initial_path: Option<PathBuf>,
     pub suggest_path: Option<PathSuggester>,
     pub suggest_branch_name: Option<BranchNameSuggester>,
+    pub validate_branch_name: BranchNameValidator,
     pub theme: UiTheme,
 }
 
@@ -310,11 +311,11 @@ impl AddUiState {
         let mut cursor = self.branch_cursor;
         while cursor > 0 {
             cursor -= 1;
-            if let Some(row) = self.matches.get(cursor) {
-                if row.is_selectable() {
-                    self.branch_cursor = cursor;
-                    return;
-                }
+            if let Some(row) = self.matches.get(cursor)
+                && row.is_selectable()
+            {
+                self.branch_cursor = cursor;
+                return;
             }
         }
     }
@@ -326,11 +327,11 @@ impl AddUiState {
         let mut cursor = self.branch_cursor;
         while cursor + 1 < self.matches.len() {
             cursor += 1;
-            if let Some(row) = self.matches.get(cursor) {
-                if row.is_selectable() {
-                    self.branch_cursor = cursor;
-                    return;
-                }
+            if let Some(row) = self.matches.get(cursor)
+                && row.is_selectable()
+            {
+                self.branch_cursor = cursor;
+                return;
             }
         }
     }
@@ -363,15 +364,15 @@ fn run_add_ui(
                 message: format!("Failed to draw UI: {e}"),
             })?;
 
-        if let Some(key) = read_key_event(Duration::from_millis(200))? {
-            if handle_add_event(&mut state, &input, key)? {
-                let branch_choice = build_branch_choice(&state)?;
-                let path = PathBuf::from(state.path_input.value.clone());
-                return Ok(AddInteractiveResult {
-                    branch_choice,
-                    path,
-                });
-            }
+        if let Some(key) = read_key_event(Duration::from_millis(200))?
+            && handle_add_event(&mut state, &input, key)?
+        {
+            let branch_choice = build_branch_choice(&state)?;
+            let path = PathBuf::from(state.path_input.value.clone());
+            return Ok(AddInteractiveResult {
+                branch_choice,
+                path,
+            });
         }
     }
 }
@@ -860,7 +861,7 @@ fn update_branch_name_validation(state: &mut AddUiState, input: &AddInteractiveI
         state.branch_name_error = Some("Branch already exists".to_string());
         return;
     }
-    match git::validate_branch_name(name) {
+    match (input.validate_branch_name)(name) {
         Ok(None) => state.branch_name_error = None,
         Ok(Some(message)) => state.branch_name_error = Some(message),
         Err(err) => state.branch_name_error = Some(err.to_string()),
@@ -1350,10 +1351,10 @@ fn apply_path_suggestion(state: &mut AddUiState, input: &AddInteractiveInput) {
         return;
     }
 
-    if let Some(suggest) = input.suggest_path.as_ref() {
-        if let Some(path) = (suggest)(&branch) {
-            state.path_input = TextInputState::new(path);
-        }
+    if let Some(suggest) = input.suggest_path.as_ref()
+        && let Some(path) = (suggest)(&branch)
+    {
+        state.path_input = TextInputState::new(path);
     }
 }
 
@@ -1611,6 +1612,7 @@ mod tests {
             initial_path: None,
             suggest_path: None,
             suggest_branch_name: None,
+            validate_branch_name: Arc::new(|_| Ok(None)),
             theme: UiTheme::default(),
         }
     }

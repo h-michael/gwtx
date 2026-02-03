@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
-use crate::git::WorktreeInfo;
 use crate::prompt;
+use crate::vcs::WorkspaceInfo;
 
 use std::path::PathBuf;
 
@@ -8,14 +8,14 @@ use super::STEP_SELECT_WORKTREE;
 use super::resolve_ui_theme;
 use super::worktree_list::{SelectMode, build_worktree_entries, select_worktrees};
 
-pub(crate) fn run_path_interactive(worktrees: &[WorktreeInfo]) -> Result<PathBuf> {
+pub(crate) fn run_path_interactive(workspaces: &[WorkspaceInfo]) -> Result<PathBuf> {
     if !prompt::is_interactive() {
         return Err(Error::InteractiveRequired {
             command: "gwtx path",
         });
     }
 
-    let entries = build_worktree_entries(worktrees, true, None);
+    let entries = build_worktree_entries(workspaces, true, None);
     if entries.is_empty() {
         return Err(Error::NoWorktreesFound);
     }

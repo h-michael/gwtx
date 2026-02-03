@@ -19,10 +19,10 @@ const ERROR_PRIVILEGE_NOT_HELD: i32 = 1314;
 ///   - Older versions: Administrator privileges
 pub(crate) fn create_symlink(source: &Path, target: &Path) -> Result<()> {
     // Ensure parent directory exists
-    if let Some(parent) = target.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = target.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent)?;
     }
 
     #[cfg(unix)]

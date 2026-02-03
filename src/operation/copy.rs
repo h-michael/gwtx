@@ -5,10 +5,10 @@ use std::path::Path;
 /// Copy a file or directory to target, creating parent dirs as needed.
 pub(crate) fn copy_file(source: &Path, target: &Path) -> Result<()> {
     // Ensure parent directory exists
-    if let Some(parent) = target.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = target.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent)?;
     }
 
     if source.is_dir() {

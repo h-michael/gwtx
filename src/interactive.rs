@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::{config, git};
+use crate::{config, vcs};
 
 use crossterm::ExecutableCommand;
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
@@ -69,8 +69,9 @@ fn render_breadcrumb_line<'a>(
     Line::from(spans)
 }
 
-fn resolve_ui_theme() -> Result<UiTheme> {
-    let repo_root = git::repository_root()?;
+pub(crate) fn resolve_ui_theme() -> Result<UiTheme> {
+    let provider = vcs::get_provider()?;
+    let repo_root = provider.repository_root()?;
     let config = config::load(&repo_root)?.unwrap_or_default();
     Ok(UiTheme::from_colors(&config.ui.colors))
 }

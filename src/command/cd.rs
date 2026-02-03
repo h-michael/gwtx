@@ -1,3 +1,9 @@
+//! Change directory command implementation.
+//!
+//! This command requires shell integration (`gwtx init`). Without shell integration,
+//! it returns an error with instructions. The actual directory change is handled
+//! by the shell wrapper function that calls `gwtx path` and `cd`.
+
 use crate::error::{Error, Result};
 
 pub(crate) fn run() -> Result<()> {

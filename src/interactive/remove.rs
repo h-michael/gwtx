@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
-use crate::git::WorktreeInfo;
 use crate::prompt;
+use crate::vcs::WorkspaceInfo;
 
 use std::path::PathBuf;
 
@@ -9,7 +9,7 @@ use super::select::confirm;
 use super::worktree_list::{SelectMode, build_worktree_entries, select_worktrees};
 use super::{STEP_CONFIRM, STEP_SELECT_WORKTREE};
 
-/// Safety warning information for a worktree.
+/// Safety warning information for a workspace.
 #[derive(Debug, Clone)]
 pub(crate) struct SafetyWarning {
     pub path: PathBuf,
@@ -21,7 +21,7 @@ pub(crate) struct SafetyWarning {
     pub unpushed_count: usize,
 }
 
-pub(crate) fn run_remove_selection(worktrees: &[WorktreeInfo]) -> Result<Vec<PathBuf>> {
+pub(crate) fn run_remove_selection(workspaces: &[WorkspaceInfo]) -> Result<Vec<PathBuf>> {
     if !prompt::is_interactive() {
         return Err(Error::InteractiveRequired {
             command: "gwtx remove -i",
@@ -29,7 +29,7 @@ pub(crate) fn run_remove_selection(worktrees: &[WorktreeInfo]) -> Result<Vec<Pat
     }
 
     let current_dir = std::env::current_dir().ok();
-    let entries = build_worktree_entries(worktrees, false, current_dir.as_deref());
+    let entries = build_worktree_entries(workspaces, false, current_dir.as_deref());
     if entries.is_empty() {
         return Err(Error::NoWorktreesToRemove);
     }
