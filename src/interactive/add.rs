@@ -546,6 +546,8 @@ fn handle_branch_step_event(
             state.step = AddStep::Path;
         }
         KeyCode::BackTab => {
+            state.branch_query.clear();
+            filter_branch_rows(state);
             state.step = AddStep::ModeSelect;
         }
         KeyCode::Up => state.move_branch_up(),
@@ -783,6 +785,7 @@ fn handle_path_event(
         KeyCode::Esc => return Err(Error::Aborted),
         KeyCode::Tab => state.step = AddStep::Confirm,
         KeyCode::BackTab => {
+            state.path_input.clear();
             state.step = if state.branch_tab == BranchTab::New {
                 AddStep::NewBranchName
             } else {
@@ -844,6 +847,7 @@ fn handle_confirm_event(
             }
         }
         KeyCode::BackTab => {
+            state.confirm_error = None;
             state.step = AddStep::Path;
         }
         _ => {}
