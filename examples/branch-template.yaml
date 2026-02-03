@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json
 
 # Branch template configuration examples
 # Used in interactive mode (-i) to suggest branch names when creating new branches
@@ -36,6 +36,6 @@ worktree:
 #   %Y/%m/%d  -> 2025/01/14
 #   %b-%d     -> Jan-14
 
-# Note: The branch template is only used in interactive mode (gwtx add -i)
+# Note: The branch template is only used in interactive mode (kabu add -i)
 # when creating a new branch. It provides a suggested name that you can
 # accept or modify.

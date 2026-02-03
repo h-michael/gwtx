@@ -9,10 +9,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Config directory name
-pub const CONFIG_DIR_NAME: &str = ".gwtx";
+pub const CONFIG_DIR_NAME: &str = ".kabu";
 /// Config file name
 pub const CONFIG_FILE_NAME: &str = "config.yaml";
-const GLOBAL_CONFIG_DIR_NAME: &str = "gwtx";
+const GLOBAL_CONFIG_DIR_NAME: &str = "kabu";
 const GLOBAL_CONFIG_FILE_NAME: &str = "config.yaml";
 
 /// Load config from the repository root. Returns None if config file doesn't exist.
@@ -112,8 +112,8 @@ fn validate_global_config(raw: &RawConfig) -> Result<()> {
 #[derive(Debug, Deserialize, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(
-    title = "gwtx configuration",
-    description = "Configuration file for gwtx (git worktree extra)"
+    title = "kabu configuration",
+    description = "Configuration file for kabu"
 )]
 pub(crate) struct RawConfig {
     on_conflict: Option<OnConflict>,
@@ -309,7 +309,7 @@ struct RawCopy {
 
 // Validated types used by the application. Guaranteed valid after TryFrom conversion.
 
-/// Root configuration from .gwtx/config.yaml.
+/// Root configuration from .kabu/config.yaml.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Config {
     pub on_conflict: Option<OnConflict>,

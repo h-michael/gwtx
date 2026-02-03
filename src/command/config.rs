@@ -39,7 +39,7 @@ pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
     }
 }
 
-/// Validate .gwtx/config.yaml configuration.
+/// Validate .kabu/config.yaml configuration.
 fn validate() -> Result<()> {
     let provider = vcs::get_provider()?;
     if !provider.is_inside_repo() {
@@ -123,11 +123,11 @@ fn new_config(
     }
 
     let repo_root = provider.repository_root()?;
-    let gwtx_dir = repo_root.join(config::CONFIG_DIR_NAME);
-    let config_path = gwtx_dir.join(config::CONFIG_FILE_NAME);
+    let kabu_dir = repo_root.join(config::CONFIG_DIR_NAME);
+    let config_path = kabu_dir.join(config::CONFIG_FILE_NAME);
 
-    // Create .gwtx/ directory
-    fs::create_dir_all(&gwtx_dir)?;
+    // Create .kabu/ directory
+    fs::create_dir_all(&kabu_dir)?;
 
     // Write config.yaml
     let template = repo_config_template();
@@ -135,16 +135,16 @@ fn new_config(
 
     // Handle .gitignore
     if with_gitignore {
-        write_gitignore(&gwtx_dir)?;
+        write_gitignore(&kabu_dir)?;
     } else if !without_gitignore {
         // Interactive prompt
         if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
             if prompt_create_gitignore() {
-                write_gitignore(&gwtx_dir)?;
+                write_gitignore(&kabu_dir)?;
             }
         } else {
             // Non-interactive: default to creating .gitignore
-            write_gitignore(&gwtx_dir)?;
+            write_gitignore(&kabu_dir)?;
         }
     }
 
@@ -154,7 +154,7 @@ fn new_config(
 fn prompt_create_gitignore() -> bool {
     use std::io::{BufRead, Write};
 
-    print!("Create .gwtx/.gitignore to exclude from git? [Y/n] ");
+    print!("Create .kabu/.gitignore to exclude from git? [Y/n] ");
     let _ = std::io::stdout().flush();
 
     let stdin = std::io::stdin();
@@ -167,8 +167,8 @@ fn prompt_create_gitignore() -> bool {
     answer.is_empty() || answer == "y" || answer == "yes"
 }
 
-fn write_gitignore(gwtx_dir: &Path) -> Result<()> {
-    let path = gwtx_dir.join(".gitignore");
+fn write_gitignore(kabu_dir: &Path) -> Result<()> {
+    let path = kabu_dir.join(".gitignore");
     fs::write(&path, "/*\n")?;
     println!("Created: {}", path.display());
     Ok(())
@@ -191,15 +191,15 @@ fn write_new_config(path: &Path, template: &str, override_existing: bool) -> Res
 }
 
 fn schema_url() -> String {
-    "https://raw.githubusercontent.com/h-michael/gwtx/main/schema/gwtx.schema.json".to_string()
+    "https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json".to_string()
 }
 
 fn repo_config_template() -> String {
     format!(
         r#"# yaml-language-server: $schema={}
 
-# gwtx configuration
-# See: https://github.com/h-michael/gwtx
+# kabu configuration
+# See: https://github.com/h-michael/kabu
 
 # Conflict handling for file operations
 # on_conflict: backup  # abort, skip, overwrite, backup
@@ -234,7 +234,7 @@ fn repo_config_template() -> String {
 #   - source: config.template.json
 #     target: config.json
 
-# Hooks (requires trust via `gwtx trust`)
+# Hooks (requires trust via `kabu trust`)
 # hooks:
 #   pre_add:
 #     - command: echo "Creating {{{{worktree_name}}}}"
@@ -255,8 +255,8 @@ fn global_config_template() -> String {
     format!(
         r#"# yaml-language-server: $schema={}
 
-# Global gwtx configuration
-# This file applies to all repositories and can be overridden by .gwtx/config.yaml.
+# Global kabu configuration
+# This file applies to all repositories and can be overridden by .kabu/config.yaml.
 
 # Allowed keys: on_conflict, auto_cd, worktree, ui, hooks.hook_shell
 
@@ -308,8 +308,8 @@ fn global_config_template() -> String {
     format!(
         r#"# yaml-language-server: $schema={}
 
-# Global gwtx configuration
-# This file applies to all repositories and can be overridden by .gwtx/config.yaml.
+# Global kabu configuration
+# This file applies to all repositories and can be overridden by .kabu/config.yaml.
 
 # Allowed keys: on_conflict, auto_cd, worktree, ui
 

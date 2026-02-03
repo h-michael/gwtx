@@ -348,7 +348,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
     if args.yes {
         trust::trust(&main_worktree_path, &config)?;
         println!("\n✓ Configuration trusted for: {}", repo_root.display());
-        println!("These hooks will now run automatically on gwtx add/remove commands.");
+        println!("These hooks will now run automatically on kabu add/remove commands.");
         return Ok(());
     }
 
@@ -357,7 +357,7 @@ pub(crate) fn run(args: TrustArgs, color_config: ColorConfig) -> Result<()> {
         if prompt::prompt_trust_hooks(&repo_root)? {
             trust::trust(&main_worktree_path, &config)?;
             println!("\n✓ Configuration trusted for: {}", repo_root.display());
-            println!("These hooks will now run automatically on gwtx add/remove commands.");
+            println!("These hooks will now run automatically on kabu add/remove commands.");
         } else {
             println!("\nConfiguration was not trusted.");
             return Err(Error::Aborted);

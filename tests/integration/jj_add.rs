@@ -11,7 +11,7 @@ fn test_jj_basic_workspace_add() {
     let mut repo = JjTestRepo::with_config(MINIMAL_CONFIG);
     let workspace_path = repo.workspace_path("feature-workspace");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", workspace_path.to_str().unwrap()])
         .assert()
         .success();
@@ -33,7 +33,7 @@ fn test_jj_colocated_workspace_add() {
     let mut repo = JjTestRepo::with_config_colocated(MINIMAL_CONFIG);
     let workspace_path = repo.workspace_path("colocated-workspace");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", workspace_path.to_str().unwrap()])
         .assert()
         .success();
@@ -64,7 +64,7 @@ fn test_jj_add_with_mkdir_link_copy() {
 
     let workspace_path = repo.workspace_path("ws-ops");
 
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             workspace_path.to_str().unwrap(),
@@ -104,7 +104,7 @@ fn test_jj_add_dry_run() {
 
     let workspace_path = repo.workspace_path("dry-run-test");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", workspace_path.to_str().unwrap(), "--dry-run"])
         .assert()
         .success()
@@ -129,7 +129,7 @@ fn test_jj_add_no_setup() {
 
     let workspace_path = repo.workspace_path("no-setup-test");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", workspace_path.to_str().unwrap(), "--no-setup"])
         .assert()
         .success();
@@ -155,7 +155,7 @@ fn test_jj_add_with_revision() {
 
     // Create workspace at a specific revision (parent of current)
     // Note: In jj, we use commitish argument to specify revision
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             workspace_path.to_str().unwrap(),
@@ -180,7 +180,7 @@ fn test_jj_add_missing_source_file() {
 
     let workspace_path = repo.workspace_path("missing-source");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", workspace_path.to_str().unwrap()])
         .assert()
         .failure()

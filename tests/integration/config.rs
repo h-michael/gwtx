@@ -12,7 +12,7 @@ fn test_config_validate_success() {
     repo.create_file_and_commit("local.env", "export FOO=bar\n", "Add local.env");
     repo.create_file_and_commit("config.template", "# Config\n", "Add config");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["config", "validate"])
         .assert()
         .success()
@@ -23,14 +23,14 @@ fn test_config_validate_success() {
 fn test_config_validate_minimal() {
     let repo = TestRepo::with_config(MINIMAL_CONFIG);
 
-    repo.gwtx().args(["config", "validate"]).assert().success();
+    repo.kabu().args(["config", "validate"]).assert().success();
 }
 
 #[test]
 fn test_config_validate_invalid_absolute_path() {
     let repo = TestRepo::with_config(INVALID_CONFIG_ABSOLUTE_PATH);
 
-    repo.gwtx()
+    repo.kabu()
         .args(["config", "validate"])
         .assert()
         .failure()
@@ -41,7 +41,7 @@ fn test_config_validate_invalid_absolute_path() {
 fn test_config_validate_invalid_path_traversal() {
     let repo = TestRepo::with_config(INVALID_CONFIG_PATH_TRAVERSAL);
 
-    repo.gwtx()
+    repo.kabu()
         .args(["config", "validate"])
         .assert()
         .failure()
@@ -56,7 +56,7 @@ fn test_config_validate_duplicate_targets() {
     repo.create_file_and_commit("file1.txt", "content1\n", "Add file1");
     repo.create_file_and_commit("file2.txt", "content2\n", "Add file2");
 
-    repo.gwtx()
+    repo.kabu()
         .args(["config", "validate"])
         .assert()
         .failure()
@@ -69,15 +69,15 @@ fn test_config_validate_without_source_files() {
     // Source files are NOT created
     // config validate only validates YAML syntax and schema, not file existence
 
-    repo.gwtx().args(["config", "validate"]).assert().success();
+    repo.kabu().args(["config", "validate"]).assert().success();
 }
 
 #[test]
 fn test_config_no_subcommand_shows_help() {
     let repo = TestRepo::with_config(MINIMAL_CONFIG);
 
-    // Running `gwtx config` without subcommand should show help or available commands
-    repo.gwtx().args(["config"]).assert().success().stdout(
+    // Running `kabu config` without subcommand should show help or available commands
+    repo.kabu().args(["config"]).assert().success().stdout(
         predicate::str::contains("validate")
             .or(predicate::str::contains("schema"))
             .or(predicate::str::contains("help")),
@@ -89,7 +89,7 @@ fn test_config_schema() {
     let repo = TestRepo::with_config(MINIMAL_CONFIG);
 
     // Generate JSON schema
-    repo.gwtx()
+    repo.kabu()
         .args(["config", "schema"])
         .assert()
         .success()
@@ -102,5 +102,5 @@ fn test_config_validate_no_config_file() {
     let repo = TestRepo::new();
 
     // No config file is treated as valid (empty default config)
-    repo.gwtx().args(["config", "validate"]).assert().success();
+    repo.kabu().args(["config", "validate"]).assert().success();
 }

@@ -11,7 +11,7 @@ use super::worktree_list::{SelectMode, build_worktree_entries, select_worktrees}
 pub(crate) fn run_path_interactive(workspaces: &[WorkspaceInfo]) -> Result<PathBuf> {
     if !prompt::is_interactive() {
         return Err(Error::InteractiveRequired {
-            command: "gwtx path",
+            command: "kabu path",
         });
     }
 

@@ -9,7 +9,7 @@ fn test_hooks_require_trust() {
     let worktree_path = repo.worktree_path("untrusted-hooks");
 
     // Without trust, should fail to execute hooks
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -33,7 +33,7 @@ fn test_pre_add_hook_execution() {
     repo.trust_config();
 
     // Add worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["add", worktree_path.to_str().unwrap(), "-b", "pre-add-test"])
         .assert()
         .success()
@@ -51,7 +51,7 @@ fn test_post_add_hook_execution() {
     repo.trust_config();
 
     // Add worktree
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -74,7 +74,7 @@ fn test_pre_add_hook_failure_aborts() {
     repo.trust_config();
 
     // pre_add hook failure should abort worktree creation
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -97,7 +97,7 @@ fn test_post_add_hook_failure_continues() {
     repo.trust_config();
 
     // post_add hook failure should warn but still succeed
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -133,7 +133,7 @@ hooks:
     repo.trust_config();
 
     // Add worktree - hooks should execute with template expansion
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -155,7 +155,7 @@ fn test_pre_remove_and_post_remove_hooks() {
     repo.trust_config();
 
     // Create worktree
-    repo.gwtx()
+    repo.kabu()
         .args([
             "add",
             worktree_path.to_str().unwrap(),
@@ -168,7 +168,7 @@ fn test_pre_remove_and_post_remove_hooks() {
     repo.register_worktree(worktree_path.clone());
 
     // Remove worktree - should execute pre_remove and post_remove hooks
-    repo.gwtx()
+    repo.kabu()
         .args(["remove", worktree_path.to_str().unwrap()])
         .assert()
         .success()

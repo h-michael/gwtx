@@ -8,20 +8,20 @@ fn test_list_basic() {
     let wt2_path = repo.worktree_path("list-wt2");
 
     // Create worktrees
-    repo.gwtx()
+    repo.kabu()
         .args(["add", wt1_path.to_str().unwrap(), "-b", "list-wt1"])
         .assert()
         .success();
     repo.register_worktree(wt1_path.clone());
 
-    repo.gwtx()
+    repo.kabu()
         .args(["add", wt2_path.to_str().unwrap(), "-b", "list-wt2"])
         .assert()
         .success();
     repo.register_worktree(wt2_path.clone());
 
     // List worktrees
-    repo.gwtx()
+    repo.kabu()
         .args(["list"])
         .assert()
         .success()
@@ -35,14 +35,14 @@ fn test_list_path_only() {
     let wt_path = repo.worktree_path("path-only-wt");
 
     // Create a worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["add", wt_path.to_str().unwrap(), "-b", "path-only-wt"])
         .assert()
         .success();
     repo.register_worktree(wt_path.clone());
 
     // List with --path-only
-    repo.gwtx()
+    repo.kabu()
         .args(["list", "--path-only"])
         .assert()
         .success()
@@ -55,14 +55,14 @@ fn test_list_with_header() {
     let wt_path = repo.worktree_path("header-wt");
 
     // Create a worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["add", wt_path.to_str().unwrap(), "-b", "header-wt"])
         .assert()
         .success();
     repo.register_worktree(wt_path.clone());
 
     // List with --header
-    repo.gwtx()
+    repo.kabu()
         .args(["list", "--header"])
         .assert()
         .success()
@@ -78,7 +78,7 @@ fn test_list_alias_ls() {
     let repo = TestRepo::with_config(MINIMAL_CONFIG);
 
     // ls should work as alias for list
-    repo.gwtx().args(["ls"]).assert().success();
+    repo.kabu().args(["ls"]).assert().success();
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn test_list_shows_main_worktree() {
     let repo = TestRepo::with_config(MINIMAL_CONFIG);
 
     // List should show the main worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["list"])
         .assert()
         .success()
@@ -99,14 +99,14 @@ fn test_list_shows_detached_head() {
     let wt_path = repo.worktree_path("detached-wt");
 
     // Create a detached worktree
-    repo.gwtx()
+    repo.kabu()
         .args(["add", wt_path.to_str().unwrap(), "--detach"])
         .assert()
         .success();
     repo.register_worktree(wt_path);
 
     // List should show detached HEAD status
-    repo.gwtx()
+    repo.kabu()
         .args(["list"])
         .assert()
         .success()

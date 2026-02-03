@@ -6,13 +6,13 @@ use clap_complete::Shell;
 use std::env;
 use std::path::PathBuf;
 
-const GWTX_PATH_PLACEHOLDER: &str = "::GWTX::";
+const KABU_PATH_PLACEHOLDER: &str = "::KABU::";
 
-const BASH_INIT: &str = include_str!("init/gwtx.bash");
-const ZSH_INIT: &str = include_str!("init/gwtx.zsh");
-const FISH_INIT: &str = include_str!("init/gwtx.fish");
-const POWERSHELL_INIT: &str = include_str!("init/gwtx.ps1");
-const ELVISH_INIT: &str = include_str!("init/gwtx.elv");
+const BASH_INIT: &str = include_str!("init/kabu.bash");
+const ZSH_INIT: &str = include_str!("init/kabu.zsh");
+const FISH_INIT: &str = include_str!("init/kabu.fish");
+const POWERSHELL_INIT: &str = include_str!("init/kabu.ps1");
+const ELVISH_INIT: &str = include_str!("init/kabu.elv");
 
 pub(crate) fn run(args: InitArgs) -> Result<()> {
     if args.print_full_init {
@@ -26,27 +26,27 @@ pub(crate) fn run(args: InitArgs) -> Result<()> {
 }
 
 fn init_stub(shell: Shell) -> Result<String> {
-    let gwtx = GwtxPath::init()?;
+    let kabu = KabuPath::init()?;
     let stub = match shell {
         Shell::Bash => format!(
             r#"eval -- "$({} init bash --print-full-init)""#,
-            gwtx.sprint_posix()?
+            kabu.sprint_posix()?
         ),
         Shell::Zsh => format!(
             r#"source <({} init zsh --print-full-init)"#,
-            gwtx.sprint_posix()?
+            kabu.sprint_posix()?
         ),
         Shell::Fish => format!(
             r#"source ({} init fish --print-full-init | psub)"#,
-            gwtx.sprint_posix()?
+            kabu.sprint_posix()?
         ),
         Shell::PowerShell => format!(
             r#"Invoke-Expression (& {} init powershell --print-full-init | Out-String)"#,
-            gwtx.sprint_pwsh()?
+            kabu.sprint_pwsh()?
         ),
         Shell::Elvish => format!(
             r#"eval ({} init elvish --print-full-init | slurp)"#,
-            gwtx.sprint_posix()?
+            kabu.sprint_posix()?
         ),
         _ => {
             return Err(Error::Internal(format!(
@@ -58,13 +58,13 @@ fn init_stub(shell: Shell) -> Result<String> {
 }
 
 fn init_main(shell: Shell) -> Result<String> {
-    let gwtx = GwtxPath::init()?;
+    let kabu = KabuPath::init()?;
     let script = match shell {
-        Shell::Bash => print_script(BASH_INIT, &gwtx.sprint_posix()?),
-        Shell::Zsh => print_script(ZSH_INIT, &gwtx.sprint_posix()?),
-        Shell::Fish => print_script(FISH_INIT, &gwtx.sprint_posix()?),
-        Shell::PowerShell => print_script(POWERSHELL_INIT, &gwtx.sprint_pwsh()?),
-        Shell::Elvish => print_script(ELVISH_INIT, &gwtx.sprint_posix()?),
+        Shell::Bash => print_script(BASH_INIT, &kabu.sprint_posix()?),
+        Shell::Zsh => print_script(ZSH_INIT, &kabu.sprint_posix()?),
+        Shell::Fish => print_script(FISH_INIT, &kabu.sprint_posix()?),
+        Shell::PowerShell => print_script(POWERSHELL_INIT, &kabu.sprint_pwsh()?),
+        Shell::Elvish => print_script(ELVISH_INIT, &kabu.sprint_posix()?),
         _ => {
             return Err(Error::Internal(format!(
                 "Unsupported shell for init: {shell:?}"
@@ -75,17 +75,17 @@ fn init_main(shell: Shell) -> Result<String> {
 }
 
 fn print_script(script: &str, path: &str) -> String {
-    script.replace(GWTX_PATH_PLACEHOLDER, path)
+    script.replace(KABU_PATH_PLACEHOLDER, path)
 }
 
-struct GwtxPath {
+struct KabuPath {
     native_path: PathBuf,
 }
 
-impl GwtxPath {
+impl KabuPath {
     fn init() -> Result<Self> {
         let exe = env::current_exe().map_err(|e| {
-            Error::Internal(format!("Failed to determine gwtx executable path: {}", e))
+            Error::Internal(format!("Failed to determine kabu executable path: {}", e))
         })?;
         Ok(Self { native_path: exe })
     }
@@ -93,7 +93,7 @@ impl GwtxPath {
     fn str_path(&self) -> Result<&str> {
         self.native_path
             .to_str()
-            .ok_or_else(|| Error::Internal("Failed to convert gwtx path to string".to_string()))
+            .ok_or_else(|| Error::Internal("Failed to convert kabu path to string".to_string()))
     }
 
     fn sprint_posix(&self) -> Result<String> {
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_posix_quote_no_special_chars() {
-        assert_eq!(posix_quote("/usr/bin/gwtx"), "'/usr/bin/gwtx'");
+        assert_eq!(posix_quote("/usr/bin/kabu"), "'/usr/bin/kabu'");
     }
 
     #[test]

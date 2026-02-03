@@ -122,7 +122,7 @@ fn main() -> ExitCode {
                 "{}",
                 ColorScheme::error(&error::Error::CdRequiresShellIntegration.to_string())
             );
-            eprintln!("\nFor setup instructions, run: gwtx init --help");
+            eprintln!("\nFor setup instructions, run: kabu init --help");
             ExitCode::FAILURE
         }
         Err(e) => {

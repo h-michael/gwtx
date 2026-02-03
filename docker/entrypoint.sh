@@ -2,7 +2,7 @@
 set -e
 
 # Ensure trust directory exists
-mkdir -p "${GWTX_TRUST_DIR:-/tmp/gwtx-trusted}"
+mkdir -p "${KABU_TRUST_DIR:-/tmp/kabu-trusted}"
 
 # Execute the command
 exec "$@"

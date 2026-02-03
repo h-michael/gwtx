@@ -1,6 +1,6 @@
-# Contributing to gwtx
+# Contributing to kabu
 
-Thank you for considering contributing to gwtx! We welcome all contributions, including:
+Thank you for considering contributing to kabu! We welcome all contributions, including:
 
 - Bug reports
 - Feature requests
@@ -19,8 +19,8 @@ Thank you for considering contributing to gwtx! We welcome all contributions, in
 1. Fork the repository
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/gwtx.git
-   cd gwtx
+   git clone https://github.com/YOUR_USERNAME/kabu.git
+   cd kabu
    ```
 3. Build the project:
    ```bash
@@ -75,7 +75,7 @@ The CHANGELOG is automatically generated using [git-cliff](https://git-cliff.org
 
 ## License
 
-By contributing to gwtx, you agree that your contributions will be licensed under either:
+By contributing to kabu, you agree that your contributions will be licensed under either:
 
 - MIT License
 - Apache License 2.0

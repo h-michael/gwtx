@@ -9,7 +9,7 @@ fn main() {
         .map(shorten_hash)
         .unwrap_or("unknown".to_string());
 
-    println!("cargo:rustc-env=GWTX_GIT_HASH={short_hash}");
+    println!("cargo:rustc-env=KABU_GIT_HASH={short_hash}");
 
     let exact_tag = git_output(&["describe", "--tags", "--exact-match", "HEAD"])
         .filter(|tag| tag == &format!("v{version}"));
@@ -20,7 +20,7 @@ fn main() {
         (None, _) => format!("v{version} nightly {short_hash}"),
     };
 
-    println!("cargo:rustc-env=GWTX_VERSION_LABEL={version_label}");
+    println!("cargo:rustc-env=KABU_VERSION_LABEL={version_label}");
 
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs");

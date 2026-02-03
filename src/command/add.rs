@@ -1,6 +1,6 @@
 //! Add worktree/workspace command implementation.
 //!
-//! Creates a new git worktree or jj workspace with automated setup from `.gwtx/config.yaml`.
+//! Creates a new git worktree or jj workspace with automated setup from `.kabu/config.yaml`.
 //! Supports both interactive and non-interactive modes, with rollback on failure.
 
 use crate::cli::AddArgs;
@@ -40,7 +40,7 @@ pub(crate) fn run(mut args: AddArgs, color: ColorConfig) -> Result<()> {
         &main_worktree_path,
         !args.no_setup,
         TrustHint::SkipHooks {
-            command: "gwtx add --no-setup <path>",
+            command: "kabu add --no-setup <path>",
         },
     )?;
     color::set_cli_theme(&config.ui.colors);

@@ -1,12 +1,12 @@
 [package]
-name = "gwtx"
+name = "kabu"
 version = "0.5.0"
 edition = "2024"
 rust-version = "1.88"
-description = "git worktree extra - CLI tool to enhance git worktree with automated setup tasks"
+description = "CLI tool to enhance git worktree and jj workspace with automated setup"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/h-michael/gwtx"
-homepage = "https://github.com/h-michael/gwtx"
+repository = "https://github.com/h-michael/kabu"
+homepage = "https://github.com/h-michael/kabu"
 readme = "README.md"
 keywords = ["git", "worktree", "cli", "automation"]
 categories = ["command-line-utilities", "development-tools"]
@@ -16,7 +16,7 @@ exclude = [
 ]
 
 [[bin]]
-name = "gwtx"
+name = "kabu"
 path = "src/main.rs"
 
 [dependencies]
