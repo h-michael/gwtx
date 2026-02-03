@@ -156,6 +156,8 @@ fn repo_config_template() -> String {
 
 # Worktree path/branch templates
 # worktree:
+#   # path_template supports: {{{{branch}}}}, {{{{repository}}}}
+#   # branch_template supports: {{{{commitish}}}}, {{{{repository}}}}, {{{{strftime(...)}}}} (e.g., {{{{strftime(%Y%m%d)}}}})
 #   path_template: "../worktrees/{{{{branch}}}}"
 #   branch_template: "{{{{commitish}}}}"
 
