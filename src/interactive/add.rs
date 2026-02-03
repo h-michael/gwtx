@@ -15,7 +15,8 @@ use std::{fs, io};
 
 use super::{
     BODY_PADDING, HEADER_HEIGHT, STEP_ACTION, STEP_BASE, STEP_BRANCH, STEP_BRANCH_NAME,
-    STEP_COMMIT, STEP_CONFIRM, STEP_WORKTREE_PATH, UiTheme, read_key_event, with_terminal,
+    STEP_COMMIT, STEP_CONFIRM, STEP_WORKTREE_PATH, UiTheme, draw_help_modal, is_help_key,
+    read_key_event, with_terminal,
 };
 
 #[derive(Debug, Clone)]
@@ -267,6 +268,7 @@ struct AddUiState {
     preview_branch: Option<String>,
     preview_log: Vec<String>,
     preview_cache: HashMap<String, Vec<String>>,
+    show_help: bool,
 }
 
 impl AddUiState {
@@ -297,6 +299,7 @@ impl AddUiState {
             preview_branch: None,
             preview_log: Vec::new(),
             preview_cache: HashMap::new(),
+            show_help: false,
         }
     }
 
@@ -478,6 +481,22 @@ fn handle_add_event(
     if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
         return Err(Error::Aborted);
     }
+
+    // Toggle help modal (F1 or Alt+H)
+    if is_help_key(&key) {
+        state.show_help = !state.show_help;
+        return Ok(false);
+    }
+
+    // When help is shown, only handle close keys
+    if state.show_help {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => state.show_help = false,
+            _ => {}
+        }
+        return Ok(false);
+    }
+
     if state.step != AddStep::Confirm {
         state.confirm_error = None;
     }
@@ -900,6 +919,10 @@ fn draw_add_ui(
         AddStep::Path => draw_path_step(frame, state, input, chunks[2]),
         AddStep::Confirm => draw_confirm_step(frame, state, input, chunks[2]),
     }
+
+    if state.show_help {
+        draw_help_modal(frame, input.theme);
+    }
 }
 
 fn draw_header(
@@ -922,13 +945,25 @@ fn draw_header(
     }
 
     let key_hints = match state.step {
-        AddStep::ModeSelect => "[Enter] select  [Esc] cancel  [↑/↓] move",
-        AddStep::Branch => "[Enter] select  [Tab] next  [Shift+Tab] back  [Esc] cancel",
-        AddStep::NewBaseSelect => "[Enter] select  [Tab] next  [Shift+Tab] back  [Esc] cancel",
-        AddStep::NewCommitInput => "[Enter] confirm  [Tab] next  [Shift+Tab] back  [Esc] cancel",
-        AddStep::NewBranchName => "[Enter] confirm  [Tab] next  [Shift+Tab] back  [Esc] cancel",
-        AddStep::Path => "[Enter] confirm  [Tab] next  [Shift+Tab] back  [Esc] cancel",
-        AddStep::Confirm => "[Enter] confirm  [Shift+Tab] back  [Esc] cancel",
+        AddStep::ModeSelect => {
+            "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  [Esc] cancel  [F1] help"
+        }
+        AddStep::Branch => {
+            let search_enabled = !(state.branch_tab == BranchTab::New
+                && state.branch_purpose == BranchPurpose::UseExisting);
+            if search_enabled {
+                "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
+            } else {
+                "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
+            }
+        }
+        AddStep::NewBaseSelect => {
+            "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
+        }
+        AddStep::NewCommitInput | AddStep::NewBranchName | AddStep::Path => {
+            "[Enter/Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
+        }
+        AddStep::Confirm => "[Enter] confirm  [Shift+Tab] back  [Esc] cancel  [F1] help",
     };
 
     let mut selected = String::new();

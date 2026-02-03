@@ -8,8 +8,8 @@ use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap}
 use std::time::Duration;
 
 use super::{
-    BODY_PADDING, HEADER_HEIGHT, UiTheme, read_key_event, render_breadcrumb_line,
-    truncate_text_for_width, with_terminal,
+    BODY_PADDING, HEADER_HEIGHT, UiTheme, draw_help_modal, is_help_key, read_key_event,
+    render_breadcrumb_line, truncate_text_for_width, with_terminal,
 };
 
 pub(crate) fn select_from_list(
@@ -44,11 +44,15 @@ pub(crate) fn confirm(
 
 struct SimpleSelectState {
     cursor: usize,
+    show_help: bool,
 }
 
 impl SimpleSelectState {
     fn new() -> Self {
-        Self { cursor: 0 }
+        Self {
+            cursor: 0,
+            show_help: false,
+        }
     }
 
     fn move_up(&mut self) {
@@ -98,6 +102,22 @@ fn run_simple_select(
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 return Err(Error::Aborted);
             }
+
+            // Toggle help modal (F1 or Alt+H)
+            if is_help_key(&key) {
+                state.show_help = !state.show_help;
+                continue;
+            }
+
+            // When help is shown, only handle close keys
+            if state.show_help {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => state.show_help = false,
+                    _ => {}
+                }
+                continue;
+            }
+
             match key.code {
                 KeyCode::Esc => return Err(Error::Aborted),
                 KeyCode::Enter => {
@@ -137,7 +157,7 @@ fn draw_simple_select(
         ])
         .split(size);
 
-    let key_hints = "[Enter] select  [Esc] cancel  [↑/↓] move";
+    let key_hints = "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  [Esc] cancel  [F1] help";
     let title_line = render_breadcrumb_line(command_name, breadcrumbs, theme);
     let key_hints_line = Line::from(Span::styled(key_hints, theme.footer_style()));
     let header = Paragraph::new(vec![title_line, key_hints_line]);
@@ -187,6 +207,10 @@ fn draw_simple_select(
         )
         .style(theme.text_style());
     frame.render_widget(list, list_area);
+
+    if state.show_help {
+        draw_help_modal(frame, theme);
+    }
 }
 
 fn run_confirm(
@@ -197,10 +221,20 @@ fn run_confirm(
     details: &[String],
     theme: UiTheme,
 ) -> Result<bool> {
+    let mut show_help = false;
+
     loop {
         terminal
             .draw(|frame| {
-                draw_confirm_dialog(frame, command_name, breadcrumbs, message, details, theme)
+                draw_confirm_dialog(
+                    frame,
+                    command_name,
+                    breadcrumbs,
+                    message,
+                    details,
+                    theme,
+                    show_help,
+                )
             })
             .map_err(|e| Error::Selector {
                 message: format!("Failed to draw UI: {e}"),
@@ -210,6 +244,22 @@ fn run_confirm(
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 return Err(Error::Aborted);
             }
+
+            // Toggle help modal (F1 or Alt+H)
+            if is_help_key(&key) {
+                show_help = !show_help;
+                continue;
+            }
+
+            // When help is shown, only handle close keys
+            if show_help {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => show_help = false,
+                    _ => {}
+                }
+                continue;
+            }
+
             match key.code {
                 KeyCode::Esc => return Ok(false),
                 KeyCode::Enter => return Ok(true),
@@ -228,6 +278,7 @@ fn draw_confirm_dialog(
     message: &str,
     details: &[String],
     theme: UiTheme,
+    show_help: bool,
 ) {
     let size = frame.area();
     let body_height = size.height.saturating_sub(HEADER_HEIGHT + BODY_PADDING);
@@ -241,7 +292,7 @@ fn draw_confirm_dialog(
         ])
         .split(size);
 
-    let key_hints = "[Enter] yes  [N] no  [Esc] cancel";
+    let key_hints = "[Enter] yes  [N] no  [Esc] cancel  [F1] help";
     let title_line = render_breadcrumb_line(command_name, breadcrumbs, theme);
     let key_hints_line = Line::from(Span::styled(key_hints, theme.footer_style()));
     let header = Paragraph::new(vec![title_line, key_hints_line]);
@@ -273,6 +324,10 @@ fn draw_confirm_dialog(
         )
         .wrap(Wrap { trim: true });
     frame.render_widget(body, chunks[2]);
+
+    if show_help {
+        draw_help_modal(frame, theme);
+    }
 }
 
 #[cfg(test)]
@@ -400,6 +455,7 @@ mod tests {
                     "Are you sure?",
                     &details,
                     theme,
+                    false,
                 );
             })
             .unwrap();
@@ -428,7 +484,7 @@ mod tests {
 
         terminal
             .draw(|frame| {
-                draw_confirm_dialog(frame, "test", &["Confirm"], "Message", &[], theme);
+                draw_confirm_dialog(frame, "test", &["Confirm"], "Message", &[], theme, false);
             })
             .unwrap();
 
