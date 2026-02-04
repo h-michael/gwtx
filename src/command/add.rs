@@ -341,7 +341,7 @@ fn run_interactive(
         suggest_path: Some(suggest_path),
         suggest_branch_name,
         validate_branch_name,
-        theme: interactive::UiTheme::from_colors(&config.ui.colors),
+        theme: interactive::UiTheme::from_ui(&config.ui),
     })?;
 
     let branch_choice = result.branch_choice;

@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use indexmap::IndexSet;
 use nucleo::pattern::{CaseMatching, Normalization};
 use nucleo::{Config, Nucleo, Utf32String};
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap};
@@ -15,9 +15,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::{
-    BODY_PADDING, HEADER_HEIGHT, STEP_SELECT_WORKTREE, UiTheme, draw_help_modal, is_help_key,
-    read_key_event, render_breadcrumb_line, truncate_text_for_width, with_terminal,
+    STEP_SELECT_WORKTREE, UiLayout, UiTheme, is_help_key, read_key_event, truncate_text_for_width,
+    with_terminal,
 };
+
+const SINGLE_MODE_HINTS: &str =
+    "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Esc] cancel  [F1] help";
+const MULTI_MODE_HINTS: &str = "[Enter] confirm  [Space] toggle  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Esc] cancel  [F1] help";
 
 #[derive(Debug, Clone)]
 pub(crate) struct WorktreeEntry {
@@ -305,35 +309,13 @@ fn draw_worktree_list(
     breadcrumbs: &[&str],
     theme: UiTheme,
 ) {
-    let size = frame.area();
-    let body_height = size.height.saturating_sub(HEADER_HEIGHT + BODY_PADDING);
-
-    let header = Rect::new(size.x, size.y, size.width, HEADER_HEIGHT);
-    let body = Rect::new(
-        size.x,
-        size.y + HEADER_HEIGHT + BODY_PADDING,
-        size.width,
-        body_height,
-    );
-
-    let key_hints = match mode {
-        SelectMode::Single => {
-            "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Esc] cancel  [F1] help"
-        }
-        SelectMode::Multi => {
-            "[Enter] confirm  [Space] toggle  [Up/Down/Ctrl+P/N/J/K] move  type: search  [Esc] cancel  [F1] help"
-        }
-    };
-
-    let title_line = render_breadcrumb_line(command_name, breadcrumbs, theme);
-    let key_hints_line = Line::from(Span::styled(key_hints, theme.footer_style()));
-    let header_block = Paragraph::new(vec![title_line, key_hints_line]);
-    frame.render_widget(header_block, header);
+    let layout = UiLayout::new(frame.area(), theme);
+    layout.draw_header(frame, command_name, breadcrumbs, None);
 
     let body_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(body);
+        .split(layout.body);
 
     let left_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -409,9 +391,12 @@ fn draw_worktree_list(
         .wrap(Wrap { trim: true });
     frame.render_widget(preview_widget, body_chunks[1]);
 
-    if state.show_help {
-        draw_help_modal(frame, theme);
-    }
+    let hints = match mode {
+        SelectMode::Single => SINGLE_MODE_HINTS,
+        SelectMode::Multi => MULTI_MODE_HINTS,
+    };
+    layout.draw_footer(frame, hints);
+    layout.draw_help_modal(frame, state.show_help);
 }
 
 fn finalize_selection(state: &WorktreeListState, mode: SelectMode) -> Result<Vec<PathBuf>> {
@@ -1065,13 +1050,13 @@ mod tests {
             .unwrap();
 
         // Verify search query is rendered in the Search box
-        // Layout: header(2) + body_padding(1) = 3 (body start)
-        // Search box: top border at y=3, content at y=4, bottom border at y=5
+        // Layout: header(1) + body_padding(1) = 2 (body start)
+        // Search box: top border at y=2, content at y=3, bottom border at y=4
         let buffer = terminal.backend().buffer();
         let search_row: String = (0..buffer.area.width)
             .map(|x| {
                 buffer
-                    .cell((x, 4))
+                    .cell((x, 3))
                     .unwrap()
                     .symbol()
                     .chars()

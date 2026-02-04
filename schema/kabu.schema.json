@@ -47,6 +47,22 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "AddDefaultMode": {
+      "title": "Add Default Mode",
+      "description": "Default mode for the interactive add command.",
+      "oneOf": [
+        {
+          "description": "Cursor starts on \"Use existing branch\"",
+          "type": "string",
+          "const": "existing"
+        },
+        {
+          "description": "Cursor starts on \"Create new branch\"",
+          "type": "string",
+          "const": "new"
+        }
+      ]
+    },
     "AfterRemove": {
       "title": "After Remove",
       "description": "Where to cd after removing the current worktree",
@@ -256,8 +272,26 @@
       "description": "Interactive UI configuration",
       "type": "object",
       "properties": {
+        "add_default_mode": {
+          "description": "Default mode for interactive add: existing or new (default: existing)",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AddDefaultMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "colors": {
           "$ref": "#/$defs/UiColors"
+        },
+        "show_key_hints": {
+          "description": "Show key hints in the UI footer (default: true)",
+          "type": [
+            "boolean",
+            "null"
+          ]
         }
       },
       "additionalProperties": false

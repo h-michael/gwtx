@@ -274,12 +274,14 @@ fn global_config_template() -> String {
 #   branch_template: "review/{{{{commitish}}}}"
 
 # ui:
+#   show_key_hints: true   # Show key hints in footer (default: true)
+#   add_default_mode: new  # Default selection in add -i: new or existing (default: existing)
 #   colors:
 #     # Supported color values:
 #     # - named: default, black, red, green, yellow, blue, magenta, cyan, gray,
 #     #          darkgray, lightred, lightgreen, lightyellow, lightblue,
 #     #          lightmagenta, lightcyan, white
-#     # - RGB: "rgb(255, 85, 0)"
+#     # - RGB hex: #ff5500
 #     border: default
 #     text: default
 #     accent: cyan
@@ -327,12 +329,14 @@ fn global_config_template() -> String {
 #   branch_template: "review/{{{{commitish}}}}"
 
 # ui:
+#   show_key_hints: true   # Show key hints in footer (default: true)
+#   add_default_mode: new  # Default selection in add -i: new or existing (default: existing)
 #   colors:
 #     # Supported color values:
 #     # - named: default, black, red, green, yellow, blue, magenta, cyan, gray,
 #     #          darkgray, lightred, lightgreen, lightyellow, lightblue,
 #     #          lightmagenta, lightcyan, white
-#     # - RGB: "rgb(255, 85, 0)"
+#     # - RGB hex: #ff5500
 #     border: default
 #     text: default
 #     accent: cyan

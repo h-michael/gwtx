@@ -14,9 +14,8 @@ use std::time::Duration;
 use std::{fs, io};
 
 use super::{
-    BODY_PADDING, HEADER_HEIGHT, STEP_ACTION, STEP_BASE, STEP_BRANCH, STEP_BRANCH_NAME,
-    STEP_COMMIT, STEP_CONFIRM, STEP_WORKTREE_PATH, UiTheme, draw_help_modal, is_help_key,
-    read_key_event, with_terminal,
+    STEP_ACTION, STEP_BASE, STEP_BRANCH, STEP_BRANCH_NAME, STEP_COMMIT, STEP_CONFIRM,
+    STEP_WORKTREE_PATH, UiLayout, UiTheme, is_help_key, read_key_event, with_terminal,
 };
 
 #[derive(Debug, Clone)]
@@ -273,15 +272,21 @@ struct AddUiState {
 
 impl AddUiState {
     fn new(input: &AddInteractiveInput) -> Self {
+        use crate::config::AddDefaultMode;
         let initial_path = input
             .initial_path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
 
+        let branch_tab = match input.theme.add_default_mode {
+            AddDefaultMode::Existing => BranchTab::Existing,
+            AddDefaultMode::New => BranchTab::New,
+        };
+
         Self {
             step: AddStep::ModeSelect,
-            branch_tab: BranchTab::Existing,
+            branch_tab,
             branch_purpose: BranchPurpose::UseExisting,
             branch_rows: Vec::new(),
             branch_cursor: 0,
@@ -523,20 +528,20 @@ fn handle_mode_select_event(state: &mut AddUiState, key: KeyEvent) -> Result<boo
     match key.code {
         KeyCode::Esc => return Err(Error::Aborted),
         KeyCode::Up => {
-            state.branch_tab = BranchTab::Existing;
+            state.branch_tab = BranchTab::New;
             return Ok(true);
         }
         KeyCode::Down => {
-            state.branch_tab = BranchTab::New;
+            state.branch_tab = BranchTab::Existing;
             return Ok(true);
         }
         KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => match c {
             'p' | 'k' => {
-                state.branch_tab = BranchTab::Existing;
+                state.branch_tab = BranchTab::New;
                 return Ok(true);
             }
             'n' | 'j' => {
-                state.branch_tab = BranchTab::New;
+                state.branch_tab = BranchTab::Existing;
                 return Ok(true);
             }
             _ => {}
@@ -896,55 +901,47 @@ fn draw_add_ui(
     state: &mut AddUiState,
     input: &AddInteractiveInput,
 ) {
-    let size = frame.area();
-    let body_height = size.height.saturating_sub(HEADER_HEIGHT + BODY_PADDING);
+    let layout = UiLayout::new(frame.area(), input.theme);
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(HEADER_HEIGHT),
-            Constraint::Length(BODY_PADDING),
-            Constraint::Length(body_height),
-        ])
-        .split(size);
-
-    draw_header(frame, state, input, chunks[0]);
+    layout.draw_header(frame, "Add", &build_breadcrumb(state), build_context(state));
 
     match state.step {
-        AddStep::ModeSelect => draw_mode_select(frame, state, input, chunks[2]),
-        AddStep::Branch => draw_branch_step(frame, state, input, chunks[2]),
-        AddStep::NewBaseSelect => draw_branch_step(frame, state, input, chunks[2]),
-        AddStep::NewCommitInput => draw_commit_step(frame, state, input, chunks[2]),
-        AddStep::NewBranchName => draw_branch_name_step(frame, state, input, chunks[2]),
-        AddStep::Path => draw_path_step(frame, state, input, chunks[2]),
-        AddStep::Confirm => draw_confirm_step(frame, state, input, chunks[2]),
+        AddStep::ModeSelect => draw_mode_select(frame, state, input, layout.body),
+        AddStep::Branch => draw_branch_step(frame, state, input, layout.body),
+        AddStep::NewBaseSelect => draw_branch_step(frame, state, input, layout.body),
+        AddStep::NewCommitInput => draw_commit_step(frame, state, input, layout.body),
+        AddStep::NewBranchName => draw_branch_name_step(frame, state, input, layout.body),
+        AddStep::Path => draw_path_step(frame, state, input, layout.body),
+        AddStep::Confirm => draw_confirm_step(frame, state, input, layout.body),
     }
 
-    if state.show_help {
-        draw_help_modal(frame, input.theme);
+    layout.draw_footer(frame, get_footer_hints(state));
+    layout.draw_help_modal(frame, state.show_help);
+}
+
+/// Build context string for header (Branch: xxx / Path: yyy)
+fn build_context(state: &AddUiState) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(branch) = &state.selected_branch {
+        parts.push(format!("Branch: {}", branch.name));
+    } else if let Some(base) = &state.base_branch {
+        parts.push(format!("Branch: {base}"));
+    } else if !state.branch_name_input.value.is_empty() {
+        parts.push(format!("Branch: {}", state.branch_name_input.value));
+    }
+    if !state.path_input.value.is_empty() {
+        parts.push(format!("Path: {}", state.path_input.value));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" / "))
     }
 }
 
-fn draw_header(
-    frame: &mut ratatui::Frame<'_>,
-    state: &AddUiState,
-    input: &AddInteractiveInput,
-    area: Rect,
-) {
-    let crumbs = build_breadcrumb(state);
-    let mut title_spans = vec![Span::styled("Add: ", input.theme.header_style())];
-    for (i, crumb) in crumbs.iter().enumerate() {
-        if i > 0 {
-            title_spans.push(Span::styled(" > ", input.theme.muted_style()));
-        }
-        if i == crumbs.len() - 1 {
-            title_spans.push(Span::styled(*crumb, input.theme.accent_style()));
-        } else {
-            title_spans.push(Span::styled(*crumb, input.theme.header_style()));
-        }
-    }
-
-    let key_hints = match state.step {
+/// Get key hints for footer based on current step
+fn get_footer_hints(state: &AddUiState) -> &'static str {
+    match state.step {
         AddStep::ModeSelect => {
             "[Enter] select  [Up/Down/Ctrl+P/N/J/K] move  [Esc] cancel  [F1] help"
         }
@@ -964,32 +961,7 @@ fn draw_header(
             "[Enter/Tab] next  [Shift+Tab] back  [Esc] cancel  [F1] help"
         }
         AddStep::Confirm => "[Enter] confirm  [Shift+Tab] back  [Esc] cancel  [F1] help",
-    };
-
-    let mut selected = String::new();
-    if let Some(branch) = &state.selected_branch {
-        selected.push_str(&format!("Branch: {}", branch.name));
-    } else if let Some(base) = &state.base_branch {
-        selected.push_str(&format!("Branch: {base}"));
-    } else if !state.branch_name_input.value.is_empty() {
-        selected.push_str(&format!("Branch: {}", state.branch_name_input.value));
     }
-    if !state.path_input.value.is_empty() {
-        if !selected.is_empty() {
-            selected.push_str(" / ");
-        }
-        selected.push_str(&format!("Worktree Path: {}", state.path_input.value));
-    }
-
-    if !selected.is_empty() {
-        title_spans.push(Span::styled(" | ", input.theme.muted_style()));
-        title_spans.push(Span::styled(selected, input.theme.label_style()));
-    }
-
-    let title_line = Line::from(title_spans);
-    let key_hints_line = Line::from(Span::styled(key_hints, input.theme.footer_style()));
-
-    frame.render_widget(Paragraph::new(vec![title_line, key_hints_line]), area);
 }
 
 fn draw_mode_select(
@@ -999,10 +971,10 @@ fn draw_mode_select(
     area: Rect,
 ) {
     let options = [
-        "Use existing branch for this worktree".to_string(),
         "Create a new branch for this worktree".to_string(),
+        "Use existing branch for this worktree".to_string(),
     ];
-    let cursor = if state.branch_tab == BranchTab::Existing {
+    let cursor = if state.branch_tab == BranchTab::New {
         0
     } else {
         1
@@ -1856,7 +1828,7 @@ mod tests {
         let state = AddUiState::new(&input);
 
         assert_eq!(state.step, AddStep::ModeSelect);
-        assert_eq!(state.branch_tab, BranchTab::Existing);
+        assert_eq!(state.branch_tab, BranchTab::New);
         assert_eq!(state.branch_cursor, 0);
         assert!(state.branch_query.is_empty());
         assert!(state.selected_branch.is_none());
@@ -2344,26 +2316,26 @@ mod tests {
     fn test_handle_mode_select_event_up() {
         let mut state = AddUiState::new(&create_test_input());
         state.step = AddStep::ModeSelect;
-        state.branch_tab = BranchTab::New;
+        state.branch_tab = BranchTab::Existing;
 
         let key = create_key_event(KeyCode::Up, KeyModifiers::NONE);
         let result = handle_mode_select_event(&mut state, key).unwrap();
 
         assert!(result);
-        assert_eq!(state.branch_tab, BranchTab::Existing);
+        assert_eq!(state.branch_tab, BranchTab::New);
     }
 
     #[test]
     fn test_handle_mode_select_event_down() {
         let mut state = AddUiState::new(&create_test_input());
         state.step = AddStep::ModeSelect;
-        state.branch_tab = BranchTab::Existing;
+        state.branch_tab = BranchTab::New;
 
         let key = create_key_event(KeyCode::Down, KeyModifiers::NONE);
         let result = handle_mode_select_event(&mut state, key).unwrap();
 
         assert!(result);
-        assert_eq!(state.branch_tab, BranchTab::New);
+        assert_eq!(state.branch_tab, BranchTab::Existing);
     }
 
     #[test]
@@ -2381,25 +2353,25 @@ mod tests {
     #[test]
     fn test_handle_mode_select_event_ctrl_p() {
         let mut state = AddUiState::new(&create_test_input());
-        state.branch_tab = BranchTab::New;
+        state.branch_tab = BranchTab::Existing;
 
         let key = create_key_event(KeyCode::Char('p'), KeyModifiers::CONTROL);
         let result = handle_mode_select_event(&mut state, key).unwrap();
 
         assert!(result);
-        assert_eq!(state.branch_tab, BranchTab::Existing);
+        assert_eq!(state.branch_tab, BranchTab::New);
     }
 
     #[test]
     fn test_handle_mode_select_event_ctrl_n() {
         let mut state = AddUiState::new(&create_test_input());
-        state.branch_tab = BranchTab::Existing;
+        state.branch_tab = BranchTab::New;
 
         let key = create_key_event(KeyCode::Char('n'), KeyModifiers::CONTROL);
         let result = handle_mode_select_event(&mut state, key).unwrap();
 
         assert!(result);
-        assert_eq!(state.branch_tab, BranchTab::New);
+        assert_eq!(state.branch_tab, BranchTab::Existing);
     }
 
     #[test]
@@ -2561,7 +2533,13 @@ mod tests {
 
         terminal
             .draw(|frame| {
-                draw_header(frame, &state, &input, frame.area());
+                let layout = UiLayout::new(frame.area(), input.theme);
+                layout.draw_header(
+                    frame,
+                    "Add",
+                    &build_breadcrumb(&state),
+                    build_context(&state),
+                );
             })
             .unwrap();
 
@@ -2582,7 +2560,13 @@ mod tests {
 
         terminal
             .draw(|frame| {
-                draw_header(frame, &state, &input, frame.area());
+                let layout = UiLayout::new(frame.area(), input.theme);
+                layout.draw_header(
+                    frame,
+                    "Add",
+                    &build_breadcrumb(&state),
+                    build_context(&state),
+                );
             })
             .unwrap();
 
