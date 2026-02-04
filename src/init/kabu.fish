@@ -92,9 +92,9 @@ function __kabu_trust_check --on-event fish_prompt --on-variable PWD
 
   if test "$__kabu_trust_state" != "untrusted"
     if test -t 2
-      printf '\033[31m%s\033[0m\n' "kabu: hooks in .kabu/config.yaml are not trusted. Run 'kabu trust' to review them." 1>&2
+      printf '\033[31m%s\033[0m\n' "kabu: hooks in config file are not trusted. Run 'kabu trust' to review them." 1>&2
     else
-      printf '%s\n' "kabu: hooks in .kabu/config.yaml are not trusted. Run 'kabu trust' to review them." 1>&2
+      printf '%s\n' "kabu: hooks in config file are not trusted. Run 'kabu trust' to review them." 1>&2
     end
   end
   set -g __kabu_trust_state untrusted

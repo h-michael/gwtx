@@ -97,9 +97,9 @@ fn __kabu_trust_check {
 
   if (not (eq $__kabu_trust_state untrusted)) {
     if (eq $term:color true) {
-      echo >&2 "\e[31mkabu: hooks in .kabu/config.yaml are not trusted. Run 'kabu trust' to review them.\e[0m"
+      echo >&2 "\e[31mkabu: hooks in config file are not trusted. Run 'kabu trust' to review them.\e[0m"
     } else {
-      echo >&2 "kabu: hooks in .kabu/config.yaml are not trusted. Run 'kabu trust' to review them."
+      echo >&2 "kabu: hooks in config file are not trusted. Run 'kabu trust' to review them."
     }
   }
   set &__kabu_trust_state = untrusted

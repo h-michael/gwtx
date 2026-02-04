@@ -8,7 +8,9 @@ pub(crate) enum Error {
     #[error("Failed to parse config: {message}")]
     ConfigParse { message: String },
 
-    #[error("Your '.kabu/config.yaml' configuration is invalid.\n\n{message}")]
+    #[error(
+        "Your '.kabu/config.yaml' or '.kabu/config.toml' configuration is invalid.\n\n{message}"
+    )]
     ConfigValidation { message: String },
 
     #[error("Failed to parse global config: {message}")]
@@ -36,7 +38,7 @@ pub(crate) enum Error {
     JjWorkspaceAddFailed { stderr: String },
 
     #[error(
-        "A source path in '.kabu/config.yaml' was not found.\n\n  Path: {path}\n  Reason: This file does not exist at the root of your repository.\n  Fix:    Ensure the path is correct and relative to the repository root."
+        "A source path in '.kabu/config.yaml' or '.kabu/config.toml' was not found.\n\n  Path: {path}\n  Reason: This file does not exist at the root of your repository.\n  Fix:    Ensure the path is correct and relative to the repository root."
     )]
     SourceNotFound { path: String },
 
@@ -151,7 +153,7 @@ pub(crate) enum Error {
     #[error("Global config directory not found")]
     GlobalConfigDirNotFound,
 
-    #[error("No hooks defined in .kabu/config.yaml")]
+    #[error("No hooks defined in .kabu/config.yaml or .kabu/config.toml")]
     NoHooksDefined,
 
     #[error("Internal error: {0}")]

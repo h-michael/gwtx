@@ -1,4 +1,4 @@
-use crate::cli::ConfigCommand;
+use crate::cli::{ConfigCommand, ConfigFormatArg};
 use crate::config;
 use crate::error::{Error, Result};
 use crate::vcs;
@@ -13,12 +13,14 @@ pub(crate) fn run(command: Option<ConfigCommand>) -> Result<()> {
         Some(ConfigCommand::Schema) => crate::command::schema(),
         Some(ConfigCommand::New {
             global,
+            format,
             path,
             override_existing,
             with_gitignore,
             without_gitignore,
         }) => new_config(
             global,
+            format,
             path,
             override_existing,
             with_gitignore,
@@ -95,6 +97,7 @@ fn get_config_value(key: &str) -> Result<()> {
 
 fn new_config(
     global: bool,
+    format: ConfigFormatArg,
     custom_path: Option<std::path::PathBuf>,
     override_existing: bool,
     with_gitignore: bool,
@@ -102,17 +105,17 @@ fn new_config(
 ) -> Result<()> {
     if let Some(path) = custom_path {
         let template = if global {
-            global_config_template()
+            global_config_template(format)
         } else {
-            repo_config_template()
+            repo_config_template(format)
         };
         write_new_config(&path, &template, override_existing)?;
         return Ok(());
     }
 
     if global {
-        let path = config::global_config_path().ok_or(Error::GlobalConfigDirNotFound)?;
-        let template = global_config_template();
+        let path = global_config_path(format).ok_or(Error::GlobalConfigDirNotFound)?;
+        let template = global_config_template(format);
         write_new_config(&path, &template, override_existing)?;
         return Ok(());
     }
@@ -124,13 +127,32 @@ fn new_config(
 
     let repo_root = provider.repository_root()?;
     let kabu_dir = repo_root.join(config::CONFIG_DIR_NAME);
-    let config_path = kabu_dir.join(config::CONFIG_FILE_NAME);
+    let (config_file_name, other_format_name) = match format {
+        ConfigFormatArg::Yaml => (config::CONFIG_FILE_NAME_YAML, config::CONFIG_FILE_NAME_TOML),
+        ConfigFormatArg::Toml => (config::CONFIG_FILE_NAME_TOML, config::CONFIG_FILE_NAME_YAML),
+    };
+    let config_path = kabu_dir.join(config_file_name);
+    let other_config_path = kabu_dir.join(other_format_name);
+
+    // Check if another format config already exists
+    if other_config_path.exists() && !override_existing {
+        let creating_yaml = matches!(format, ConfigFormatArg::Yaml);
+        if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+            if !prompt_create_with_other_format(&other_config_path, creating_yaml) {
+                return Err(Error::Aborted);
+            }
+        } else {
+            return Err(Error::ConfigAlreadyExists {
+                path: other_config_path,
+            });
+        }
+    }
 
     // Create .kabu/ directory
     fs::create_dir_all(&kabu_dir)?;
 
-    // Write config.yaml
-    let template = repo_config_template();
+    // Write config file
+    let template = repo_config_template(format);
     write_new_config(&config_path, &template, override_existing)?;
 
     // Handle .gitignore
@@ -151,6 +173,21 @@ fn new_config(
     Ok(())
 }
 
+fn global_config_path(format: ConfigFormatArg) -> Option<std::path::PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::config_dir)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))?;
+
+    let file_name = match format {
+        ConfigFormatArg::Yaml => config::GLOBAL_CONFIG_FILE_NAME_YAML,
+        ConfigFormatArg::Toml => config::GLOBAL_CONFIG_FILE_NAME_TOML,
+    };
+
+    Some(base.join("kabu").join(file_name))
+}
+
 fn prompt_create_gitignore() -> bool {
     use std::io::{BufRead, Write};
 
@@ -165,6 +202,35 @@ fn prompt_create_gitignore() -> bool {
 
     let answer = line.trim().to_lowercase();
     answer.is_empty() || answer == "y" || answer == "yes"
+}
+
+fn prompt_create_with_other_format(other_path: &Path, creating_yaml: bool) -> bool {
+    use std::io::{BufRead, Write};
+
+    if creating_yaml {
+        // Creating YAML when TOML exists: new YAML will take priority
+        println!(
+            "Warning: {} exists and will be ignored (YAML takes priority).",
+            other_path.display()
+        );
+    } else {
+        // Creating TOML when YAML exists: existing YAML takes priority
+        println!(
+            "Warning: {} already exists and takes priority. The new TOML will be ignored.",
+            other_path.display()
+        );
+    }
+    print!("Create anyway? [y/N] ");
+    let _ = std::io::stdout().flush();
+
+    let stdin = std::io::stdin();
+    let mut line = String::new();
+    if stdin.lock().read_line(&mut line).is_err() {
+        return false; // Default to no on error
+    }
+
+    let answer = line.trim().to_lowercase();
+    answer == "y" || answer == "yes"
 }
 
 fn write_gitignore(kabu_dir: &Path) -> Result<()> {
@@ -194,7 +260,14 @@ fn schema_url() -> String {
     "https://raw.githubusercontent.com/h-michael/kabu/main/schema/kabu.schema.json".to_string()
 }
 
-fn repo_config_template() -> String {
+fn repo_config_template(format: ConfigFormatArg) -> String {
+    match format {
+        ConfigFormatArg::Yaml => repo_config_template_yaml(),
+        ConfigFormatArg::Toml => repo_config_template_toml(),
+    }
+}
+
+fn repo_config_template_yaml() -> String {
     format!(
         r#"# yaml-language-server: $schema={}
 
@@ -250,13 +323,79 @@ fn repo_config_template() -> String {
     )
 }
 
+fn repo_config_template_toml() -> String {
+    r#"# kabu configuration
+# See: https://github.com/h-michael/kabu
+
+# Conflict handling for file operations
+# on_conflict = "backup"  # abort, skip, overwrite, backup
+
+# Auto cd settings (requires shell integration)
+# [auto_cd]
+# after_add = true      # cd to new worktree after creation (default: true)
+# after_remove = "main" # cd target after removing current worktree (default: main)
+
+# Worktree path/branch templates
+# [worktree]
+# # path_template supports: {{branch}}, {{repository}}
+# # branch_template supports: {{commitish}}, {{repository}}, {{strftime(...)}} (e.g., {{strftime(%Y%m%d)}})
+# path_template = "../worktrees/{{branch}}"
+# branch_template = "{{commitish}}"
+
+# Create directories in new worktree
+# [[mkdir]]
+# path = "build"
+#
+# [[mkdir]]
+# path = "tmp"
+# description = "Temporary files"
+
+# Create symlinks from repo root to worktree
+# [[link]]
+# source = ".env.local"
+#
+# [[link]]
+# source = "fixtures/*"
+# skip_tracked = true
+# description = "Link untracked test fixtures"
+
+# Copy files from repo root to worktree
+# [[copy]]
+# source = "config.template.json"
+# target = "config.json"
+
+# Hooks (requires trust via `kabu trust`)
+# [hooks]
+# [[hooks.pre_add]]
+# command = "echo 'Creating {{worktree_name}}'"
+#
+# [[hooks.post_add]]
+# command = "npm install"
+# description = "Install dependencies"
+#
+# [[hooks.pre_remove]]
+# command = "echo 'Removing {{worktree_name}}'"
+#
+# [[hooks.post_remove]]
+# command = "./scripts/cleanup.sh"
+"#
+    .to_string()
+}
+
+fn global_config_template(format: ConfigFormatArg) -> String {
+    match format {
+        ConfigFormatArg::Yaml => global_config_template_yaml(),
+        ConfigFormatArg::Toml => global_config_template_toml(),
+    }
+}
+
 #[cfg(windows)]
-fn global_config_template() -> String {
+fn global_config_template_yaml() -> String {
     format!(
         r#"# yaml-language-server: $schema={}
 
 # Global kabu configuration
-# This file applies to all repositories and can be overridden by .kabu/config.yaml.
+# This file applies to all repositories and can be overridden by .kabu/config.yaml or .kabu/config.toml.
 
 # Allowed keys: on_conflict, auto_cd, worktree, ui, hooks.hook_shell
 
@@ -306,12 +445,12 @@ fn global_config_template() -> String {
 }
 
 #[cfg(not(windows))]
-fn global_config_template() -> String {
+fn global_config_template_yaml() -> String {
     format!(
         r#"# yaml-language-server: $schema={}
 
 # Global kabu configuration
-# This file applies to all repositories and can be overridden by .kabu/config.yaml.
+# This file applies to all repositories and can be overridden by .kabu/config.yaml or .kabu/config.toml.
 
 # Allowed keys: on_conflict, auto_cd, worktree, ui
 
@@ -355,4 +494,105 @@ fn global_config_template() -> String {
  "#,
         schema_url()
     )
+}
+
+#[cfg(windows)]
+fn global_config_template_toml() -> String {
+    r#"# Global kabu configuration
+# This file applies to all repositories and can be overridden by .kabu/config.yaml or .kabu/config.toml.
+
+# Allowed keys: on_conflict, auto_cd, worktree, ui, hooks.hook_shell
+
+# on_conflict = "backup"  # abort, skip, overwrite, backup
+
+# Auto cd settings (requires shell integration)
+# [auto_cd]
+# after_add = true      # cd to new worktree after creation (default: true)
+# after_remove = "main" # cd target after removing current worktree (default: main)
+
+# [worktree]
+# # path_template supports: {{branch}}, {{repository}}
+# # branch_template supports: {{commitish}}, {{repository}}, {{strftime(...)}} (e.g., {{strftime(%Y%m%d)}})
+# path_template = "../worktrees/{{repository}}-{{branch}}"
+# branch_template = "review/{{commitish}}"
+
+# [ui]
+# show_key_hints = true    # Show key hints in footer (default: true)
+# add_default_mode = "new" # Default selection in add -i: new or existing (default: existing)
+#
+# [ui.colors]
+# # Supported color values:
+# # - named: default, black, red, green, yellow, blue, magenta, cyan, gray,
+# #          darkgray, lightred, lightgreen, lightyellow, lightblue,
+# #          lightmagenta, lightcyan, white
+# # - RGB hex: #ff5500
+# border = "default"
+# text = "default"
+# accent = "cyan"
+# header = "default"
+# footer = "default"
+# title = "default"
+# label = "default"
+# muted = "default"
+# disabled = "default"
+# search = "default"
+# preview = "default"
+# selection_bg = "default"
+# selection_fg = "default"
+# warning = "default"
+# error = "default"
+
+# [hooks]
+# hook_shell = "pwsh"  # Windows-only: pwsh, powershell, bash, cmd, wsl
+ "#
+    .to_string()
+}
+
+#[cfg(not(windows))]
+fn global_config_template_toml() -> String {
+    r#"# Global kabu configuration
+# This file applies to all repositories and can be overridden by .kabu/config.yaml or .kabu/config.toml.
+
+# Allowed keys: on_conflict, auto_cd, worktree, ui
+
+# on_conflict = "backup"  # abort, skip, overwrite, backup
+
+# Auto cd settings (requires shell integration)
+# [auto_cd]
+# after_add = true      # cd to new worktree after creation (default: true)
+# after_remove = "main" # cd target after removing current worktree (default: main)
+
+# [worktree]
+# # path_template supports: {{branch}}, {{repository}}
+# # branch_template supports: {{commitish}}, {{repository}}, {{strftime(...)}} (e.g., {{strftime(%Y%m%d)}})
+# path_template = "../worktrees/{{repository}}-{{branch}}"
+# branch_template = "review/{{commitish}}"
+
+# [ui]
+# show_key_hints = true    # Show key hints in footer (default: true)
+# add_default_mode = "new" # Default selection in add -i: new or existing (default: existing)
+#
+# [ui.colors]
+# # Supported color values:
+# # - named: default, black, red, green, yellow, blue, magenta, cyan, gray,
+# #          darkgray, lightred, lightgreen, lightyellow, lightblue,
+# #          lightmagenta, lightcyan, white
+# # - RGB hex: #ff5500
+# border = "default"
+# text = "default"
+# accent = "cyan"
+# header = "default"
+# footer = "default"
+# title = "default"
+# label = "default"
+# muted = "default"
+# disabled = "default"
+# search = "default"
+# preview = "default"
+# selection_bg = "default"
+# selection_fg = "default"
+# warning = "default"
+# error = "default"
+ "#
+    .to_string()
 }

@@ -20,7 +20,7 @@ Every time you create a git worktree or jj workspace, you end up doing the same 
 - Copying `.env.example` to `.env`
 - Creating cache directories
 
-kabu reads `.kabu/config.yaml` from your repository and runs these tasks automatically when creating a worktree or workspace. It automatically detects whether you're in a git repository or jj repository and uses the appropriate commands.
+kabu reads `.kabu/config.yaml` (or `.kabu/config.toml`) from your repository and runs these tasks automatically when creating a worktree or workspace. It automatically detects whether you're in a git repository or jj repository and uses the appropriate commands.
 
 ## Installation
 
@@ -32,7 +32,7 @@ See [INSTALL.md](INSTALL.md) for other installation methods (mise, Nix, GitHub R
 
 ## Quick Start
 
-1.  **Create `.kabu/config.yaml`**: In your repository root, create a `.kabu/config.yaml` file to define your worktree setup.
+1.  **Create `.kabu/config.yaml` (or `.kabu/config.toml`)**: In your repository root, create a configuration file to define your worktree setup. Both YAML and TOML formats are supported (YAML takes priority if both exist).
     ```yaml
     # .kabu/config.yaml example
     mkdir:
@@ -234,7 +234,7 @@ Shell integration provides:
 
 ## Configuration
 
-Create `.kabu/config.yaml` in your repository root. See [examples/](examples/) for various use cases.
+Create `.kabu/config.yaml` or `.kabu/config.toml` in your repository root. Both YAML and TOML formats are supported. If both files exist, YAML takes priority. See [examples/](examples/) for various use cases.
 
 **JSON Schema:** The configuration format is validated against a JSON Schema located at `schema/kabu.schema.json`. This schema can be used with editors that support YAML schema validation for autocomplete and validation.
 

@@ -516,13 +516,13 @@ pub(crate) fn display_hooks_for_review(hooks: &Hooks) {
     if use_color {
         eprintln!(
             "{}",
-            ColorScheme::warning("WARNING: Untrusted hooks detected in .kabu/config.yaml")
+            ColorScheme::warning("WARNING: Untrusted hooks detected in config file")
         );
     } else {
-        eprintln!("WARNING: Untrusted hooks detected in .kabu/config.yaml");
+        eprintln!("WARNING: Untrusted hooks detected in config file");
     }
     eprintln!();
-    eprintln!("Trusting will allow ALL hooks in this file to execute:");
+    eprintln!("Trusting will allow ALL hooks in this config to execute:");
 
     display_hook_entries(&hooks.pre_add, "pre_add", use_color);
     display_hook_entries(&hooks.post_add, "post_add", use_color);

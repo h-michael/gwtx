@@ -97,9 +97,9 @@ function __kabu_trust_check() {
 
   if [[ "$__kabu_trust_state" != "untrusted" ]]; then
     if [[ -t 2 ]]; then
-      print -u2 $'%{\e[31m%}kabu: hooks in .kabu/config.yaml are not trusted. Run \'kabu trust\' to review them.%{\e[0m%}'
+      print -u2 $'%{\e[31m%}kabu: hooks in config file are not trusted. Run \'kabu trust\' to review them.%{\e[0m%}'
     else
-      print -u2 "kabu: hooks in .kabu/config.yaml are not trusted. Run 'kabu trust' to review them."
+      print -u2 "kabu: hooks in config file are not trusted. Run 'kabu trust' to review them."
     fi
   fi
   __kabu_trust_state="untrusted"
