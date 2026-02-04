@@ -16,7 +16,8 @@ VCS SUPPORT:
     - Colocated repositories (jj on top of git)
 
 CONFIGURATION:
-    kabu reads .kabu/config.yaml from the repository root for setup instructions.
+    kabu reads .kabu/config.yaml or .kabu/config.toml from the repository root.
+    Both formats are supported; YAML takes priority if both exist.
 
 COLOR OUTPUT:
     kabu uses colored output for better readability. Control with:
@@ -32,7 +33,7 @@ COLOR OUTPUT:
 
 EXAMPLES:
     kabu add ../new-worktree-path
-        Create worktree and run setup from .kabu/config.yaml
+        Create worktree and run setup from config file
 
     kabu add -b new-branch-name ../new-worktree-path
         Create new branch and worktree with setup
@@ -56,7 +57,7 @@ EXAMPLES:
         Preview what would be removed without executing
 
     kabu trust
-        Trust hooks in .kabu/config.yaml (required for hook execution)
+        Trust hooks in config file (required for hook execution)
 
     kabu untrust --list
         List all trusted repositories
@@ -96,13 +97,13 @@ pub(crate) enum Command {
     /// Change directory to a selected worktree/workspace (requires shell integration)
     Cd,
 
-    /// Manage .kabu/config.yaml configuration
+    /// Manage configuration (.kabu/config.yaml or .kabu/config.toml)
     Config(ConfigArgs),
 
-    /// Trust hooks in .kabu/config.yaml for the current repository
+    /// Trust hooks in config file for the current repository
     Trust(TrustArgs),
 
-    /// Revoke trust for hooks in .kabu/config.yaml
+    /// Revoke trust for hooks in config file
     Untrust(UntrustArgs),
 
     /// Generate shell completion script
@@ -212,22 +213,46 @@ pub(crate) struct ConfigArgs {
     pub command: Option<ConfigCommand>,
 }
 
+/// Config file format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ConfigFormatArg {
+    #[default]
+    Yaml,
+    Toml,
+}
+
+impl std::str::FromStr for ConfigFormatArg {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "yaml" | "yml" => Ok(Self::Yaml),
+            "toml" => Ok(Self::Toml),
+            _ => Err(format!("Invalid format: {s}. Valid values: yaml, toml")),
+        }
+    }
+}
+
 /// Config subcommands.
 #[derive(Subcommand, Debug)]
 pub(crate) enum ConfigCommand {
-    /// Validate .kabu/config.yaml configuration
+    /// Validate configuration file (.kabu/config.yaml or .kabu/config.toml)
     Validate,
     /// Generate JSON Schema for configuration
     Schema,
     /// Create a new configuration file
     New {
         /// Create global config at:
-        ///   - $XDG_CONFIG_HOME/kabu/config.yaml (if XDG_CONFIG_HOME is set)
-        ///   - ~/.config/kabu/config.yaml (Linux)
-        ///   - ~/Library/Application Support/kabu/config.yaml (macOS)
-        ///   - %APPDATA%\kabu\config.yaml (Windows)
+        ///   - $XDG_CONFIG_HOME/kabu/config.{yaml,toml} (if XDG_CONFIG_HOME is set)
+        ///   - ~/.config/kabu/config.{yaml,toml} (Linux)
+        ///   - ~/Library/Application Support/kabu/config.{yaml,toml} (macOS)
+        ///   - %APPDATA%\kabu\config.{yaml,toml} (Windows)
         #[arg(short, long, verbatim_doc_comment)]
         global: bool,
+
+        /// Config file format: yaml or toml (default: yaml)
+        #[arg(short, long, default_value = "yaml")]
+        format: ConfigFormatArg,
 
         /// Custom path for the config file
         #[arg(short, long)]
@@ -262,7 +287,7 @@ VCS SUPPORT:
 
 EXAMPLES:
     kabu add ../new-worktree-path
-        Create worktree/workspace and run setup from .kabu/config.yaml
+        Create worktree/workspace and run setup from config file
 
     kabu add -b new-branch-name ../new-worktree-path
         Create new branch (git) or bookmark (jj) with worktree/workspace
@@ -310,7 +335,7 @@ pub(crate) struct AddArgs {
     #[arg(long, help_heading = "kabu Options")]
     pub dry_run: bool,
 
-    /// Skip .kabu/config.yaml setup, run worktree/workspace add only
+    /// Skip config file setup, run worktree/workspace add only
     #[arg(long, help_heading = "kabu Options")]
     pub no_setup: bool,
 
@@ -555,7 +580,7 @@ SECURITY:
     Trust is stored in: ~/.local/share/kabu/trusted/
     Each repository's hooks are identified by a SHA256 hash.
 
-    If hooks are modified in .kabu/config.yaml, you must re-trust them.
+    If hooks are modified in the config file, you must re-trust them.
 
 HOOKS:
     Platform support: Unix-like systems (Linux, macOS) and Windows.
@@ -578,7 +603,7 @@ HOOKS:
 
 EXAMPLES:
     kabu trust
-        Trust hooks in .kabu/config.yaml for the current repository
+        Trust hooks in config file for the current repository
 
     kabu trust --yes
         Trust hooks without prompting

@@ -106,7 +106,7 @@ function __kabu_trust_check {
   }
 
   if ($global:__kabu_trust_state -ne "untrusted") {
-    Write-Host "kabu: hooks in .kabu/config.yaml are not trusted. Run 'kabu trust' to review them." -ForegroundColor Red
+    Write-Host "kabu: hooks in config file are not trusted. Run 'kabu trust' to review them." -ForegroundColor Red
   }
   $global:__kabu_trust_state = "untrusted"
 }

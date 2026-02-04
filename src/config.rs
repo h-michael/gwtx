@@ -10,25 +10,70 @@ use serde::{Deserialize, Serialize};
 
 /// Config directory name
 pub const CONFIG_DIR_NAME: &str = ".kabu";
-/// Config file name
-pub const CONFIG_FILE_NAME: &str = "config.yaml";
+/// Config file name for YAML format
+pub const CONFIG_FILE_NAME_YAML: &str = "config.yaml";
+/// Config file name for TOML format
+pub const CONFIG_FILE_NAME_TOML: &str = "config.toml";
 const GLOBAL_CONFIG_DIR_NAME: &str = "kabu";
-const GLOBAL_CONFIG_FILE_NAME: &str = "config.yaml";
+/// Global config file name for YAML format
+pub const GLOBAL_CONFIG_FILE_NAME_YAML: &str = "config.yaml";
+/// Global config file name for TOML format
+pub const GLOBAL_CONFIG_FILE_NAME_TOML: &str = "config.toml";
+
+#[derive(Debug, Clone, Copy)]
+enum ConfigFormat {
+    Yaml,
+    Toml,
+}
+
+/// Find config file with format detection. YAML takes priority.
+fn find_config_file(
+    dir: &Path,
+    yaml_name: &str,
+    toml_name: &str,
+) -> Option<(PathBuf, ConfigFormat)> {
+    let yaml_path = dir.join(yaml_name);
+    if yaml_path.exists() {
+        return Some((yaml_path, ConfigFormat::Yaml));
+    }
+    let toml_path = dir.join(toml_name);
+    if toml_path.exists() {
+        return Some((toml_path, ConfigFormat::Toml));
+    }
+    None
+}
+
+fn parse_raw_config(content: &str, format: ConfigFormat) -> std::result::Result<RawConfig, String> {
+    match format {
+        ConfigFormat::Yaml => serde_yaml::from_str(content).map_err(|e| e.to_string()),
+        ConfigFormat::Toml => toml::from_str(content).map_err(|e| e.to_string()),
+    }
+}
+
+fn global_config_dir() -> Option<PathBuf> {
+    let base = env::var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(dirs::config_dir)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))?;
+    Some(base.join(GLOBAL_CONFIG_DIR_NAME))
+}
 
 /// Load config from the repository root. Returns None if config file doesn't exist.
 pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
-    let config_path = repo_root.join(CONFIG_DIR_NAME).join(CONFIG_FILE_NAME);
+    let config_dir = repo_root.join(CONFIG_DIR_NAME);
 
-    if !config_path.exists() {
-        return Ok(None);
-    }
+    let (config_path, format) =
+        match find_config_file(&config_dir, CONFIG_FILE_NAME_YAML, CONFIG_FILE_NAME_TOML) {
+            Some(result) => result,
+            None => return Ok(None),
+        };
 
     let content = fs::read_to_string(&config_path)?;
 
     // Parse into RawConfig (permissive, all fields optional)
-    let raw: RawConfig = serde_yaml::from_str(&content).map_err(|e| Error::ConfigParse {
-        message: e.to_string(),
-    })?;
+    let raw: RawConfig =
+        parse_raw_config(&content, format).map_err(|message| Error::ConfigParse { message })?;
 
     // Convert to Config (validates and transforms)
     Config::try_from(raw).map(Some)
@@ -36,20 +81,24 @@ pub(crate) fn load(repo_root: &Path) -> Result<Option<Config>> {
 
 /// Load global config. Returns None if config file doesn't exist or config dir is unknown.
 pub(crate) fn load_global() -> Result<Option<Config>> {
-    let config_path = match global_config_path() {
-        Some(path) => path,
+    let config_dir = match global_config_dir() {
+        Some(dir) => dir,
         None => return Ok(None),
     };
 
-    if !config_path.exists() {
-        return Ok(None);
-    }
+    let (config_path, format) = match find_config_file(
+        &config_dir,
+        GLOBAL_CONFIG_FILE_NAME_YAML,
+        GLOBAL_CONFIG_FILE_NAME_TOML,
+    ) {
+        Some(result) => result,
+        None => return Ok(None),
+    };
 
     let content = fs::read_to_string(&config_path)?;
 
-    let raw: RawConfig = serde_yaml::from_str(&content).map_err(|e| Error::GlobalConfigParse {
-        message: e.to_string(),
-    })?;
+    let raw: RawConfig = parse_raw_config(&content, format)
+        .map_err(|message| Error::GlobalConfigParse { message })?;
 
     validate_global_config(&raw)?;
 
@@ -66,19 +115,6 @@ pub(crate) fn load_merged(repo_root: &Path) -> Result<Config> {
     let global = load_global()?;
     let repo = load(repo_root)?.unwrap_or_default();
     Ok(merge_with_global(repo, global.as_ref()))
-}
-
-pub(crate) fn global_config_path() -> Option<PathBuf> {
-    let base = env::var_os("XDG_CONFIG_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(dirs::config_dir)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))?;
-
-    Some(
-        base.join(GLOBAL_CONFIG_DIR_NAME)
-            .join(GLOBAL_CONFIG_FILE_NAME),
-    )
 }
 
 fn validate_global_config(raw: &RawConfig) -> Result<()> {
@@ -2373,5 +2409,174 @@ ui:
         let merged = merge_with_global(repo, None);
         assert!(!merged.ui.show_key_hints());
         assert_eq!(merged.ui.add_default_mode(), AddDefaultMode::New); // None -> default
+    }
+
+    // TOML format tests
+
+    #[test]
+    fn test_parse_minimal_config_toml() {
+        let toml_content = r#"
+[[link]]
+source = ".env.local"
+"#;
+        let raw: RawConfig = toml::from_str(toml_content).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(config.link.len(), 1);
+        assert_eq!(config.link[0].source, PathBuf::from(".env.local"));
+        assert_eq!(config.link[0].target, PathBuf::from(".env.local"));
+    }
+
+    #[test]
+    fn test_parse_full_config_toml() {
+        let toml_content = r#"
+on_conflict = "skip"
+
+[[mkdir]]
+path = "tmp/cache"
+description = "Create cache dir"
+
+[[link]]
+source = ".env.local"
+
+[[link]]
+source = ".secret/creds.json"
+target = "config/creds.json"
+on_conflict = "abort"
+description = "Link credentials"
+
+[[copy]]
+source = ".env.example"
+target = ".env"
+on_conflict = "backup"
+"#;
+        let raw: RawConfig = toml::from_str(toml_content).unwrap();
+        let config = Config::try_from(raw).unwrap();
+
+        assert_eq!(config.on_conflict, Some(OnConflict::Skip));
+
+        assert_eq!(config.mkdir.len(), 1);
+        assert_eq!(config.mkdir[0].path, PathBuf::from("tmp/cache"));
+        assert_eq!(
+            config.mkdir[0].description,
+            Some("Create cache dir".to_string())
+        );
+
+        assert_eq!(config.link.len(), 2);
+        assert_eq!(config.link[1].on_conflict, Some(OnConflict::Abort));
+        assert_eq!(
+            config.link[1].description,
+            Some("Link credentials".to_string())
+        );
+
+        assert_eq!(config.copy.len(), 1);
+        assert_eq!(config.copy[0].on_conflict, Some(OnConflict::Backup));
+    }
+
+    #[test]
+    fn test_parse_hooks_toml() {
+        let toml_content = r#"
+[hooks]
+[[hooks.pre_add]]
+command = "echo 'pre'"
+
+[[hooks.post_add]]
+command = "npm install"
+description = "Install dependencies"
+"#;
+        let raw: RawConfig = toml::from_str(toml_content).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(config.hooks.pre_add.len(), 1);
+        assert_eq!(config.hooks.pre_add[0].command, "echo 'pre'");
+        assert_eq!(config.hooks.post_add.len(), 1);
+        assert_eq!(config.hooks.post_add[0].command, "npm install");
+        assert_eq!(
+            config.hooks.post_add[0].description,
+            Some("Install dependencies".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_worktree_toml() {
+        let toml_content = r#"
+[worktree]
+path_template = "../worktrees/{{branch}}"
+branch_template = "review/{{commitish}}"
+"#;
+        let raw: RawConfig = toml::from_str(toml_content).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(
+            config.worktree.path_template,
+            Some("../worktrees/{{branch}}".to_string())
+        );
+        assert_eq!(
+            config.worktree.branch_template,
+            Some("review/{{commitish}}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_ui_toml() {
+        let toml_content = r##"
+[ui]
+show_key_hints = false
+add_default_mode = "existing"
+
+[ui.colors]
+border = "dark-gray"
+accent = "#ff5500"
+"##;
+        let raw: RawConfig = toml::from_str(toml_content).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert!(!config.ui.show_key_hints());
+        assert_eq!(config.ui.add_default_mode(), AddDefaultMode::Existing);
+        assert_eq!(
+            config.ui.colors.border,
+            Some(UiColor::Named(UiColorName::DarkGray))
+        );
+        assert_eq!(config.ui.colors.accent, Some(UiColor::Rgb(255, 85, 0)));
+    }
+
+    #[test]
+    fn test_parse_empty_config_toml() {
+        let toml_content = "";
+        let raw: RawConfig = toml::from_str(toml_content).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert!(config.link.is_empty());
+        assert!(config.copy.is_empty());
+        assert!(config.mkdir.is_empty());
+    }
+
+    #[test]
+    fn test_parse_raw_config_yaml() {
+        let yaml = r#"
+link:
+  - source: ".env"
+"#;
+        let result = parse_raw_config(yaml, ConfigFormat::Yaml);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_raw_config_toml() {
+        let toml_content = r#"
+[[link]]
+source = ".env"
+"#;
+        let result = parse_raw_config(toml_content, ConfigFormat::Toml);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_raw_config_invalid_yaml() {
+        let yaml = "invalid: yaml: [[[";
+        let result = parse_raw_config(yaml, ConfigFormat::Yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_raw_config_invalid_toml() {
+        let toml_content = "invalid = [[[";
+        let result = parse_raw_config(toml_content, ConfigFormat::Toml);
+        assert!(result.is_err());
     }
 }
