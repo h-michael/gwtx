@@ -167,6 +167,12 @@ struct RawWorktree {
 struct RawUi {
     #[serde(default)]
     colors: RawUiColors,
+    #[schemars(description = "Show key hints in the UI footer (default: true)")]
+    show_key_hints: Option<bool>,
+    #[schemars(
+        description = "Default mode for interactive add: existing or new (default: existing)"
+    )]
+    add_default_mode: Option<AddDefaultMode>,
 }
 
 #[derive(Debug, Deserialize, Default, JsonSchema)]
@@ -219,6 +225,18 @@ pub(crate) enum UiColorName {
     LightMagenta,
     LightCyan,
     White,
+}
+
+/// Default mode for the interactive add command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema, Default)]
+#[schemars(title = "Add Default Mode")]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum AddDefaultMode {
+    /// Cursor starts on "Use existing branch"
+    Existing,
+    /// Cursor starts on "Create new branch"
+    #[default]
+    New,
 }
 
 /// Hook entry with command and optional description.
@@ -348,6 +366,12 @@ pub(crate) fn merge_with_global(mut repo: Config, global: Option<&Config>) -> Co
     }
 
     repo.ui.colors = repo.ui.colors.merge_with_fallback(&global.ui.colors);
+    if repo.ui.show_key_hints.is_none() {
+        repo.ui.show_key_hints = global.ui.show_key_hints;
+    }
+    if repo.ui.add_default_mode.is_none() {
+        repo.ui.add_default_mode = global.ui.add_default_mode;
+    }
 
     if repo.hooks.hook_shell.is_none() {
         repo.hooks.hook_shell = global.hooks.hook_shell.clone();
@@ -531,7 +555,11 @@ impl TryFrom<RawConfig> for Config {
                 path_template: raw.worktree.path_template,
                 branch_template: raw.worktree.branch_template,
             },
-            ui: Ui { colors: ui_colors },
+            ui: Ui {
+                colors: ui_colors,
+                show_key_hints: raw.ui.show_key_hints,
+                add_default_mode: raw.ui.add_default_mode,
+            },
             hooks: Hooks {
                 hook_shell: raw.hooks.hook_shell,
                 pre_add: raw.hooks.pre_add,
@@ -600,9 +628,23 @@ pub(crate) struct Worktree {
 }
 
 /// Interactive UI configuration.
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Ui {
     pub colors: UiColors,
+    pub show_key_hints: Option<bool>,
+    pub add_default_mode: Option<AddDefaultMode>,
+}
+
+impl Ui {
+    /// Returns show_key_hints value, defaulting to true if not set.
+    pub fn show_key_hints(&self) -> bool {
+        self.show_key_hints.unwrap_or(true)
+    }
+
+    /// Returns add_default_mode value, defaulting to New if not set.
+    pub fn add_default_mode(&self) -> AddDefaultMode {
+        self.add_default_mode.unwrap_or_default()
+    }
 }
 
 /// Customizable UI colors.
@@ -2158,5 +2200,178 @@ worktree:
     fn test_extract_template_variables_triple_brace_only() {
         let vars = extract_template_variables("{{{branch}}}");
         assert!(vars.is_empty());
+    }
+
+    // UI config tests
+
+    #[test]
+    fn test_ui_show_key_hints_default() {
+        let ui = Ui::default();
+        assert!(ui.show_key_hints()); // None -> true
+    }
+
+    #[test]
+    fn test_ui_show_key_hints_explicit_true() {
+        let ui = Ui {
+            show_key_hints: Some(true),
+            ..Default::default()
+        };
+        assert!(ui.show_key_hints());
+    }
+
+    #[test]
+    fn test_ui_show_key_hints_explicit_false() {
+        let ui = Ui {
+            show_key_hints: Some(false),
+            ..Default::default()
+        };
+        assert!(!ui.show_key_hints());
+    }
+
+    #[test]
+    fn test_ui_add_default_mode_default() {
+        let ui = Ui::default();
+        assert_eq!(ui.add_default_mode(), AddDefaultMode::New); // None -> New
+    }
+
+    #[test]
+    fn test_ui_add_default_mode_explicit_existing() {
+        let ui = Ui {
+            add_default_mode: Some(AddDefaultMode::Existing),
+            ..Default::default()
+        };
+        assert_eq!(ui.add_default_mode(), AddDefaultMode::Existing);
+    }
+
+    #[test]
+    fn test_ui_add_default_mode_explicit_new() {
+        let ui = Ui {
+            add_default_mode: Some(AddDefaultMode::New),
+            ..Default::default()
+        };
+        assert_eq!(ui.add_default_mode(), AddDefaultMode::New);
+    }
+
+    #[test]
+    fn test_parse_ui_show_key_hints_false() {
+        let yaml = r#"
+ui:
+  show_key_hints: false
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(config.ui.show_key_hints, Some(false));
+        assert!(!config.ui.show_key_hints());
+    }
+
+    #[test]
+    fn test_parse_ui_show_key_hints_true() {
+        let yaml = r#"
+ui:
+  show_key_hints: true
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(config.ui.show_key_hints, Some(true));
+        assert!(config.ui.show_key_hints());
+    }
+
+    #[test]
+    fn test_parse_ui_add_default_mode_new() {
+        let yaml = r#"
+ui:
+  add_default_mode: new
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(config.ui.add_default_mode, Some(AddDefaultMode::New));
+        assert_eq!(config.ui.add_default_mode(), AddDefaultMode::New);
+    }
+
+    #[test]
+    fn test_parse_ui_add_default_mode_existing() {
+        let yaml = r#"
+ui:
+  add_default_mode: existing
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert_eq!(config.ui.add_default_mode, Some(AddDefaultMode::Existing));
+        assert_eq!(config.ui.add_default_mode(), AddDefaultMode::Existing);
+    }
+
+    #[test]
+    fn test_parse_ui_full_config() {
+        let yaml = r##"
+ui:
+  show_key_hints: false
+  add_default_mode: new
+  colors:
+    border: dark-gray
+    accent: "#ff5500"
+"##;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let config = Config::try_from(raw).unwrap();
+        assert!(!config.ui.show_key_hints());
+        assert_eq!(config.ui.add_default_mode(), AddDefaultMode::New);
+        assert_eq!(
+            config.ui.colors.border,
+            Some(UiColor::Named(UiColorName::DarkGray))
+        );
+        assert_eq!(config.ui.colors.accent, Some(UiColor::Rgb(255, 85, 0)));
+    }
+
+    #[test]
+    fn test_merge_ui_config_local_overrides_global() {
+        let global = Config {
+            ui: Ui {
+                show_key_hints: Some(false),
+                add_default_mode: Some(AddDefaultMode::New),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let repo = Config {
+            ui: Ui {
+                show_key_hints: Some(true),
+                add_default_mode: Some(AddDefaultMode::Existing),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let merged = merge_with_global(repo, Some(&global));
+        assert!(merged.ui.show_key_hints());
+        assert_eq!(merged.ui.add_default_mode(), AddDefaultMode::Existing);
+    }
+
+    #[test]
+    fn test_merge_ui_config_global_fallback() {
+        let global = Config {
+            ui: Ui {
+                show_key_hints: Some(false),
+                add_default_mode: Some(AddDefaultMode::New),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let repo = Config::default(); // show_key_hints: None, add_default_mode: None
+        let merged = merge_with_global(repo, Some(&global));
+        // Now global values should be used because repo values are None
+        assert!(!merged.ui.show_key_hints());
+        assert_eq!(merged.ui.add_default_mode(), AddDefaultMode::New);
+    }
+
+    #[test]
+    fn test_merge_ui_config_no_global() {
+        let repo = Config {
+            ui: Ui {
+                show_key_hints: Some(false),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let merged = merge_with_global(repo, None);
+        assert!(!merged.ui.show_key_hints());
+        assert_eq!(merged.ui.add_default_mode(), AddDefaultMode::New); // None -> default
     }
 }

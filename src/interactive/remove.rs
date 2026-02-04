@@ -38,7 +38,7 @@ pub(crate) fn run_remove_selection(workspaces: &[WorkspaceInfo]) -> Result<Vec<P
     select_worktrees(
         &entries,
         SelectMode::Multi,
-        "Remove",
+        "Remove worktrees",
         &[STEP_SELECT_WORKTREE],
         theme,
     )
@@ -80,7 +80,7 @@ pub(crate) fn run_remove_confirmation(warnings: &[SafetyWarning]) -> Result<bool
 
     let theme = resolve_ui_theme()?;
     confirm(
-        "Remove",
+        "Remove worktrees",
         &[STEP_SELECT_WORKTREE, STEP_CONFIRM],
         "Do you want to proceed with removal?",
         &details,

@@ -8,7 +8,7 @@ use crossterm::terminal::{
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
@@ -41,24 +41,106 @@ const STEP_CONFIRM: &str = "Confirm";
 const STEP_CONFLICT: &str = "Resolve conflict";
 
 // Shared layout constants
-const HEADER_HEIGHT: u16 = 2;
+const HEADER_HEIGHT: u16 = 1;
+const FOOTER_HEIGHT: u16 = 1;
 const BODY_PADDING: u16 = 1;
+
+/// Calculate footer height based on theme settings (key hints at bottom)
+fn footer_height(theme: UiTheme) -> u16 {
+    if theme.show_key_hints {
+        FOOTER_HEIGHT
+    } else {
+        0
+    }
+}
+
+/// Pre-computed layout areas for interactive UIs
+pub(crate) struct UiLayout {
+    pub header: Rect,
+    pub body: Rect,
+    footer: Option<Rect>,
+    theme: UiTheme,
+}
+
+impl UiLayout {
+    /// Compute layout areas from frame size
+    pub fn new(size: Rect, theme: UiTheme) -> Self {
+        let footer_h = footer_height(theme);
+        let body_height = size
+            .height
+            .saturating_sub(HEADER_HEIGHT + BODY_PADDING + footer_h);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(HEADER_HEIGHT),
+                Constraint::Length(BODY_PADDING),
+                Constraint::Length(body_height),
+                Constraint::Length(footer_h),
+            ])
+            .split(size);
+
+        Self {
+            header: chunks[0],
+            body: chunks[2],
+            footer: if footer_h > 0 { Some(chunks[3]) } else { None },
+            theme,
+        }
+    }
+
+    /// Draw header with breadcrumb
+    pub fn draw_header(
+        &self,
+        frame: &mut ratatui::Frame<'_>,
+        command_name: &str,
+        breadcrumbs: &[&str],
+        context: Option<String>,
+    ) {
+        let line = render_breadcrumb_line(command_name, breadcrumbs, context, self.theme);
+        frame.render_widget(Paragraph::new(vec![line]), self.header);
+    }
+
+    /// Draw footer with key hints (if enabled)
+    pub fn draw_footer(&self, frame: &mut ratatui::Frame<'_>, key_hints: &str) {
+        if let Some(area) = self.footer {
+            let line = Line::from(Span::styled(key_hints, self.theme.footer_style()));
+            frame.render_widget(Paragraph::new(vec![line]), area);
+        }
+    }
+
+    /// Draw help modal overlay
+    pub fn draw_help_modal(&self, frame: &mut ratatui::Frame<'_>, show: bool) {
+        if show {
+            draw_help_modal(frame, self.theme);
+        }
+    }
+}
 
 /// Renders a breadcrumb line for the header.
 ///
-/// Format: `{command_name}: crumb1 > crumb2 > crumb3`
-/// The last crumb is highlighted with accent color.
+/// Format: `[command_name] crumb1 > crumb2 > crumb3 | context`
+/// The command name has bold + background color, the last crumb is highlighted with accent color.
+/// Optional context is displayed after a separator on the right side.
 fn render_breadcrumb_line<'a>(
     command_name: &'a str,
     breadcrumbs: &[&'a str],
+    context: Option<String>,
     theme: UiTheme,
 ) -> ratatui::text::Line<'a> {
+    use ratatui::style::Modifier;
     use ratatui::text::{Line, Span};
 
-    let mut spans = vec![Span::styled(
-        format!("{command_name}: "),
-        theme.header_style(),
-    )];
+    let mut spans = vec![
+        Span::styled(
+            format!(" {command_name} "),
+            Style::default()
+                .fg(theme.selection_fg)
+                .bg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" ", theme.muted_style()),
+    ];
+
     for (i, crumb) in breadcrumbs.iter().enumerate() {
         if i > 0 {
             spans.push(Span::styled(" > ", theme.muted_style()));
@@ -69,6 +151,12 @@ fn render_breadcrumb_line<'a>(
             spans.push(Span::styled(*crumb, theme.header_style()));
         }
     }
+
+    if let Some(ctx) = context {
+        spans.push(Span::styled(" | ", theme.muted_style()));
+        spans.push(Span::styled(ctx, theme.label_style()));
+    }
+
     Line::from(spans)
 }
 
@@ -76,7 +164,7 @@ pub(crate) fn resolve_ui_theme() -> Result<UiTheme> {
     let provider = vcs::get_provider()?;
     let repo_root = provider.repository_root()?;
     let config = config::load(&repo_root)?.unwrap_or_default();
-    Ok(UiTheme::from_colors(&config.ui.colors))
+    Ok(UiTheme::from_ui(&config.ui))
 }
 
 /// Reads the next key event from the terminal, filtering out non-key events.
@@ -135,56 +223,60 @@ pub(crate) struct UiTheme {
     selection_fg: Color,
     warning: Color,
     error: Color,
+    pub show_key_hints: bool,
+    pub add_default_mode: config::AddDefaultMode,
 }
 
 impl UiTheme {
-    pub(crate) fn from_colors(colors: &config::UiColors) -> Self {
+    pub(crate) fn from_ui(ui: &config::Ui) -> Self {
         let mut theme = UiTheme::default();
-        if let Some(color) = colors.border {
+        if let Some(color) = ui.colors.border {
             theme.border = map_ui_color(color);
         }
-        if let Some(color) = colors.text {
+        if let Some(color) = ui.colors.text {
             theme.text = map_ui_color(color);
         }
-        if let Some(color) = colors.accent {
+        if let Some(color) = ui.colors.accent {
             theme.accent = map_ui_color(color);
         }
-        if let Some(color) = colors.header {
+        if let Some(color) = ui.colors.header {
             theme.header = map_ui_color(color);
         }
-        if let Some(color) = colors.footer {
+        if let Some(color) = ui.colors.footer {
             theme.footer = map_ui_color(color);
         }
-        if let Some(color) = colors.title {
+        if let Some(color) = ui.colors.title {
             theme.title = map_ui_color(color);
         }
-        if let Some(color) = colors.label {
+        if let Some(color) = ui.colors.label {
             theme.label = map_ui_color(color);
         }
-        if let Some(color) = colors.muted {
+        if let Some(color) = ui.colors.muted {
             theme.muted = map_ui_color(color);
         }
-        if let Some(color) = colors.disabled {
+        if let Some(color) = ui.colors.disabled {
             theme.disabled = map_ui_color(color);
         }
-        if let Some(color) = colors.search {
+        if let Some(color) = ui.colors.search {
             theme.search = map_ui_color(color);
         }
-        if let Some(color) = colors.preview {
+        if let Some(color) = ui.colors.preview {
             theme.preview = map_ui_color(color);
         }
-        if let Some(color) = colors.selection_bg {
+        if let Some(color) = ui.colors.selection_bg {
             theme.selection_bg = map_ui_color(color);
         }
-        if let Some(color) = colors.selection_fg {
+        if let Some(color) = ui.colors.selection_fg {
             theme.selection_fg = map_ui_color(color);
         }
-        if let Some(color) = colors.warning {
+        if let Some(color) = ui.colors.warning {
             theme.warning = map_ui_color(color);
         }
-        if let Some(color) = colors.error {
+        if let Some(color) = ui.colors.error {
             theme.error = map_ui_color(color);
         }
+        theme.show_key_hints = ui.show_key_hints();
+        theme.add_default_mode = ui.add_default_mode();
         theme
     }
 
@@ -255,7 +347,7 @@ impl Default for UiTheme {
             footer: Color::Gray,
             title: Color::LightBlue,
             label: Color::LightMagenta,
-            muted: Color::DarkGray,
+            muted: Color::Gray,
             disabled: Color::DarkGray,
             search: Color::LightGreen,
             preview: Color::White,
@@ -263,6 +355,8 @@ impl Default for UiTheme {
             selection_fg: Color::Black,
             warning: Color::Yellow,
             error: Color::Red,
+            show_key_hints: true,
+            add_default_mode: config::AddDefaultMode::New,
         }
     }
 }
@@ -532,7 +626,7 @@ mod tests {
         assert_eq!(theme.footer, Color::Gray);
         assert_eq!(theme.title, Color::LightBlue);
         assert_eq!(theme.label, Color::LightMagenta);
-        assert_eq!(theme.muted, Color::DarkGray);
+        assert_eq!(theme.muted, Color::Gray);
         assert_eq!(theme.disabled, Color::DarkGray);
         assert_eq!(theme.search, Color::LightGreen);
         assert_eq!(theme.preview, Color::White);
@@ -543,19 +637,25 @@ mod tests {
     }
 
     #[test]
-    fn test_ui_theme_from_colors_partial() {
-        let colors = UiColors {
-            border: Some(UiColor::Named(UiColorName::Red)),
-            accent: Some(UiColor::Rgb(255, 128, 0)),
+    fn test_ui_theme_from_ui_partial() {
+        let ui = config::Ui {
+            colors: UiColors {
+                border: Some(UiColor::Named(UiColorName::Red)),
+                accent: Some(UiColor::Rgb(255, 128, 0)),
+                ..Default::default()
+            },
             ..Default::default()
         };
-        let theme = UiTheme::from_colors(&colors);
+        let theme = UiTheme::from_ui(&ui);
 
         assert_eq!(theme.border, Color::Red);
         assert_eq!(theme.accent, Color::Rgb(255, 128, 0));
         // Unset colors should use defaults
         assert_eq!(theme.text, Color::White);
         assert_eq!(theme.header, Color::LightCyan);
+        // Unset UI options should use defaults
+        assert!(theme.show_key_hints);
+        assert_eq!(theme.add_default_mode, config::AddDefaultMode::New);
     }
 
     #[test]
@@ -696,5 +796,37 @@ mod tests {
         let selection = theme.selection_style();
         assert_eq!(selection.fg, Some(Color::Black));
         assert_eq!(selection.bg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn test_ui_theme_default_show_key_hints() {
+        let theme = UiTheme::default();
+        assert!(theme.show_key_hints);
+    }
+
+    #[test]
+    fn test_ui_theme_default_add_default_mode() {
+        let theme = UiTheme::default();
+        assert_eq!(theme.add_default_mode, config::AddDefaultMode::New);
+    }
+
+    #[test]
+    fn test_ui_theme_from_ui_show_key_hints_false() {
+        let ui = config::Ui {
+            show_key_hints: Some(false),
+            ..Default::default()
+        };
+        let theme = UiTheme::from_ui(&ui);
+        assert!(!theme.show_key_hints);
+    }
+
+    #[test]
+    fn test_ui_theme_from_ui_add_default_mode_new() {
+        let ui = config::Ui {
+            add_default_mode: Some(config::AddDefaultMode::New),
+            ..Default::default()
+        };
+        let theme = UiTheme::from_ui(&ui);
+        assert_eq!(theme.add_default_mode, config::AddDefaultMode::New);
     }
 }
